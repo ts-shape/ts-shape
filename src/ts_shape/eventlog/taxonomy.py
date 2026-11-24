@@ -1226,6 +1226,21 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:outcome": "cycle_class",
         },
     ),
+    ("CycleProfileEvents", "units"): _r(
+        "production.cycle_profile.unit",
+        _PR,
+        ST,
+        standard_attrs={
+            "ts_shape:method": "robust_log_z",
+            "ts_shape:sample_count": "cycle_uuid",
+        },
+    ),
+    ("CycleProfileEvents", "events_frame"): _r(
+        "production.cycle_profile.event_table",
+        _PR,
+        ST,
+        standard_attrs={"ts_shape:method": "inferred_kind"},
+    ),
     ("CycleTimeEvents", "detect_unusual_cycles"): _r(
         "production.cycle_time.unusual",
         _PR,
@@ -2812,6 +2827,20 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         standard_attrs={"ts_shape:sample_count": "order_count"},
     ),
 }
+
+
+def _profiler_label_rules() -> dict[tuple[str, str], LabelRule]:
+    """The unit profilers' rules from :mod:`ts_shape.eventlog.profiler_rules`."""
+    from ts_shape.eventlog.profiler_rules import profiler_rule_specs
+
+    out = {}
+    for key, spec in profiler_rule_specs().items():
+        kw = {k: v for k, v in spec.items() if k not in ("name", "archetype", "objs")}
+        out[key] = _r(objs=spec.get("objs", ASSET), **kw)
+    return out
+
+
+REGISTRY.update(_profiler_label_rules())
 
 
 #: Label rules of event-log *functions* that return event frames (not

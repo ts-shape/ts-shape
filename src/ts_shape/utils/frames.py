@@ -329,7 +329,9 @@ def window_offset(window: Any) -> Any:
     return offset
 
 
-#: Value columns of the long format (text and bytes kept as objects).
+#: The long format's value columns: never dropped by compact_frame.
+_VALUE_COLUMN_NAMES = ("value_double", "value_integer", "value_bool", "value_string")
+#: Columns compact_frame drops when they carry no information.
 _COMPACT_EMPTY_CANDIDATES = ("plctime", "sequence_number", "value_bytes")
 
 
@@ -348,7 +350,8 @@ def compact_frame(
     * ``plctime``, ``sequence_number`` and ``value_bytes`` are dropped when
       they hold no information (all missing, all equal or all zero), and
       any other column that is entirely missing is dropped too
-      (``drop_empty``).
+      (``drop_empty``); the uuid and ``value_*`` columns are always kept;
+    * ``value_integer`` is only cast when every value is a whole number.
 
     On a real export this cut the memory of a 6-hour slice from 1,032 MB to
     287 MB. Detectors accept the compact frame as it is.
@@ -364,6 +367,8 @@ def compact_frame(
     out = dataframe.copy()
     if drop_empty:
         for column in list(out.columns):
+            if column in _VALUE_COLUMN_NAMES or column == uuid_column:
+                continue  # the long format's columns stay (detectors read them)
             values = out[column]
             if values.isna().all():
                 out = out.drop(columns=column)
@@ -376,13 +381,13 @@ def compact_frame(
     ):
         out[uuid_column] = out[uuid_column].astype("category")
     if "value_integer" in out.columns:
-        ints = pd.to_numeric(out["value_integer"], errors="coerce")
-        if (
-            ints.dropna().apply(float.is_integer).all()
-            if ints.dtype.kind == "f"
-            else True
-        ):
-            out["value_integer"] = ints.astype("Int64")
+        raw = out["value_integer"]
+        ints = pd.to_numeric(raw, errors="coerce")
+        exact = not (ints.isna() & raw.notna()).any() and bool(
+            np.all(np.isclose(ints.dropna(), np.round(ints.dropna())))
+        )
+        if exact:  # only when every value is a whole number
+            out["value_integer"] = ints.round().astype("Int64")
     if "value_bool" in out.columns and out["value_bool"].dtype == object:
         try:
             out["value_bool"] = out["value_bool"].astype("boolean")

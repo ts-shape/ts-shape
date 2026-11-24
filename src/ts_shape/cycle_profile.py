@@ -29,16 +29,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import warnings
+import weakref
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape._profile_result import ProfileResult
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
 from ts_shape.signals.infer import infer_specs
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
 
 if TYPE_CHECKING:
@@ -108,6 +112,17 @@ def signal_labels(metadata: pd.DataFrame | None) -> pd.Series:
     return labels[~labels.index.duplicated(keep="first")]
 
 
+def _note_excluded(count: int) -> None:
+    """Say how many signals the personal-data exclusion left out (no names)."""
+    if count:
+        warnings.warn(
+            f"{count} signal(s) left out: their label matches a personal-data "
+            "pattern (exclude=...; pass exclude=() to keep every signal).",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
+
+
 def prepare_signals(
     timeseries: pd.DataFrame,
     metadata: pd.DataFrame | None = None,
@@ -175,9 +190,46 @@ def prepare_signals(
         frame["uuid"] = frame["uuid"].map(labels).fillna(frame["uuid"])
     if exclude:
         pattern = personal_pattern(tuple(exclude))
-        frame = frame[~frame["uuid"].map(lambda u: bool(pattern.search(u)))]
+        hidden = frame["uuid"].map(lambda u: bool(pattern.search(u)))
+        _note_excluded(int(frame.loc[hidden, "uuid"].nunique()))
+        frame = frame[~hidden]
     frame = frame.sort_values(["systime", "uuid"], kind="stable")
     return frame.reset_index(drop=True)
+
+
+#: id(frame) -> (weak reference, row count, uuid -> positional rows).
+_ROWS_CACHE: dict[int, tuple[Any, int, dict[Any, np.ndarray]]] = {}
+
+
+def _rows_by_signal(frame: pd.DataFrame) -> dict[Any, np.ndarray]:
+    """Positional rows of every signal, grouped once per frame.
+
+    The report helpers read one signal at a time; filtering the whole frame
+    per signal costs a full scan each (minutes on a multi-million-row
+    export). The grouping is kept per frame object (weakly referenced,
+    checked against the row count).
+    """
+    key = id(frame)
+    hit = _ROWS_CACHE.get(key)
+    if hit is not None and hit[0]() is frame and hit[1] == len(frame):
+        return hit[2]
+    rows = (
+        {k: np.asarray(v) for k, v in frame.groupby("uuid", sort=False).indices.items()}
+        if "uuid" in frame.columns and len(frame)
+        else {}
+    )
+    if len(_ROWS_CACHE) > 8:
+        _ROWS_CACHE.clear()
+    _ROWS_CACHE[key] = (weakref.ref(frame), len(frame), rows)
+    return rows
+
+
+def _signal_part(frame: pd.DataFrame, signal: Any) -> pd.DataFrame:
+    """The rows of ``signal`` (as ``frame[frame["uuid"] == signal]``)."""
+    rows = _rows_by_signal(frame).get(signal)
+    if rows is None:
+        return frame.iloc[0:0]
+    return frame.iloc[rows]
 
 
 def signal_inventory(frame: pd.DataFrame) -> pd.DataFrame:
@@ -197,7 +249,7 @@ def signal_inventory(frame: pd.DataFrame) -> pd.DataFrame:
     rows = []
     counts = frame.groupby("uuid").size()
     for uuid, spec in infer_specs(frame).items():
-        part = frame[frame["uuid"] == uuid]
+        part = _signal_part(frame, uuid)
         values = (
             part[spec.value_column].dropna()
             if spec.value_column in part
@@ -225,7 +277,8 @@ def signal_inventory(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 @dataclass
-class CycleProfileResult:
+@dataclass
+class CycleProfileResult(ProfileResult):
     """Every table of one profile run and a summary of plain numbers.
 
     Attributes:
@@ -240,46 +293,10 @@ class CycleProfileResult:
             ``curve_bands``, ``curve_scores``, ``curve_flagged`` and
             ``cycle_time_check`` (see the functions of the same name).
         summary: Plain numbers (counts, seconds, percent), JSON-able.
+        kind: ``"cycles"``.
     """
 
-    tables: dict[str, pd.DataFrame]
-    summary: dict[str, Any] = field(default_factory=dict)
-
-    def save(self, directory: str | Path) -> list[Path]:
-        """Write ``summary.json`` and one CSV per table into ``directory``.
-
-        Args:
-            directory: Target folder; created when missing.
-
-        Returns:
-            The written files.
-        """
-        out = Path(directory)
-        out.mkdir(parents=True, exist_ok=True)
-        written = [out / "summary.json"]
-        written[0].write_text(
-            json.dumps(self.summary, indent=1, allow_nan=False), encoding="utf-8"
-        )
-        for name, table in self.tables.items():
-            path = out / f"{name}.csv"
-            table.to_csv(path, index=False)
-            written.append(path)
-        return written
-
-    @classmethod
-    def load(cls, directory: str | Path) -> CycleProfileResult:
-        """Read a result written by :meth:`save` (for dashboards).
-
-        Args:
-            directory: Folder written by :meth:`save`.
-
-        Returns:
-            The result with its summary and tables.
-        """
-        path = Path(directory)
-        summary = json.loads((path / "summary.json").read_text(encoding="utf-8"))
-        tables = {p.stem: pd.read_csv(p) for p in sorted(path.glob("*.csv"))}
-        return cls(tables=tables, summary=summary)
+    kind: str = "cycles"
 
 
 def _num(value: Any) -> float | None:
@@ -648,7 +665,7 @@ def process_graph(
 
 def _lookup(frame: pd.DataFrame, signal: str, value_column: str) -> pd.DataFrame:
     """Time-sorted ``ns`` / ``v`` of one numeric signal (duplicates: last)."""
-    part = frame.loc[frame["uuid"] == signal, ["systime", value_column]]
+    part = _signal_part(frame, signal)[["systime", value_column]]
     out = pd.DataFrame(
         {
             "ns": pd.DatetimeIndex(part["systime"]).as_unit("ns").asi8,
@@ -875,9 +892,7 @@ def curve_profiles(
     n_cycles = max(len(records), 1)
 
     def changes_per_cycle(signal: str, value_column: str) -> float:
-        v = pd.to_numeric(
-            frame.loc[frame["uuid"] == signal, value_column], errors="coerce"
-        )
+        v = pd.to_numeric(_signal_part(frame, signal)[value_column], errors="coerce")
         return float((v.diff().fillna(0) != 0).sum()) / n_cycles
 
     analog = analog[
@@ -1294,6 +1309,26 @@ def profile_cycles(
     """
     frame = prepare_signals(timeseries, metadata, exclude=exclude)
     profile = CycleProfileEvents(frame, **profile_options)
+    return cycle_tables(frame, profile, top_n=top_n)
+
+
+def cycle_tables(
+    frame: pd.DataFrame, profile: CycleProfileEvents, *, top_n: int = 10
+) -> CycleProfileResult:
+    """Every table of :func:`profile_cycles` from a prepared frame and profile.
+
+    Lets :func:`ts_shape.unit_profiles.profile_units` reuse one computed
+    :class:`~ts_shape.CycleProfileEvents` for the cycle tables and the unit
+    profilers.
+
+    Args:
+        frame: The output of :func:`prepare_signals`.
+        profile: The cycle profile of ``frame``.
+        top_n: Influencers kept per comparison.
+
+    Returns:
+        The :class:`CycleProfileResult`.
+    """
     tables = {
         "signals": signal_inventory(frame),
         "anchors": profile.cycle_anchor_candidates(),

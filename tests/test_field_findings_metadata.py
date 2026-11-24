@@ -282,3 +282,98 @@ def test_coarse_polling_is_not_evaluable() -> None:
     assert not bad["evaluable"].any()
     assert bad["reason"].str.startswith("anchor_below_resolution").all()
     assert (bad["time_resolution_seconds"] > 0).all()
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label", ["User_ID", "Current_User", "Username", "Personal_Name", "Log-in name"]
+)
+def test_personal_labels_with_separators(label: str) -> None:
+    assert is_personal(label)
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "AnalogInput_3",
+        "Catalog index",
+        "Benutzeroberfläche",
+        "User defined 1",
+        "Ventil Bediener-Taste",
+    ],
+)
+def test_machine_labels_are_not_personal(label: str) -> None:
+    assert not is_personal(label)
+
+
+def test_excluded_signals_are_counted() -> None:
+    t = pd.date_range("2026-10-01", periods=3, freq="1s")
+    raw = pd.concat([_long("u1", t, [1.0, 2, 3]), _long("u2", t, [4.0, 5, 6])])
+    meta = pd.DataFrame({"uuid": ["u1", "u2"], "label": ["Temp", "Worker"]})
+    with pytest.warns(DataQualityWarning, match="1 signal"):
+        out = prepare_signals(raw, meta)
+    assert out["uuid"].unique().tolist() == ["Temp"]
+
+
+def test_id_labels_are_never_vetoed() -> None:
+    frame = ts_shape.make_object_signals()
+    frame = frame[0] if isinstance(frame, tuple) else frame
+    table = identify_objects(frame).to_frame()
+    ids = table.loc[table["role"] == "identifier", "uuid"].tolist()[:3]
+    labels = dict(zip(ids, ["Part number", "RFID Tag ID", "Werkstück-Nr"], strict=True))
+    vetoed = identify_objects(frame, labels=labels).to_frame().set_index("uuid")
+    assert (vetoed.loc[ids, "role"] == "identifier").all()
+
+
+def test_shift_reset_fast_counter_stays_a_counter() -> None:
+    t = pd.date_range("2026-10-05", periods=3 * 5760, freq="5s")
+    bottles = (np.arange(len(t)) % 5760) * 50.0  # 10/s, reset every 8 h
+    assert ts_shape.infer_specs(_long("b", t, bottles))["b"].kind == "counter"
+
+
+def test_compact_frame_keeps_value_columns_and_text() -> None:
+    df = pd.DataFrame(
+        {
+            "uuid": ["a", "b"],
+            "value_double": [np.nan, np.nan],
+            "value_integer": [1.0, "x"],
+            "plctime": [0, 0],
+        }
+    )
+    out = ts_shape.compact_frame(df)
+    assert "value_double" in out.columns and "plctime" not in out.columns
+    assert out["value_integer"].tolist() == [1.0, "x"]
+
+
+def test_extra_metadata_field_does_not_rename_config_columns() -> None:
+    meta = ts_shape.MetadataJsonLoader(
+        [
+            {
+                "uuid": "a",
+                "label": "x",
+                "datatype": "Int",
+                "config": {"datatype": "Real", "nodePath": "/a"},
+            }
+        ]
+    )
+    assert {"nodePath", "datatype", "top.datatype"} <= set(meta.to_df().columns)
+
+
+def test_flags_in_words() -> None:
+    flat = _flat().assign(
+        is_enabled=["on", "aktiv", "enabled", "off"], is_archived=False
+    )
+    meta = ts_shape.MetadataJsonLoader.from_flat_frame(flat)
+    assert meta.delivering().index.tolist() == ["t1", "t2", "s"]
+
+
+def test_zip_skips_macos_members(tmp_path: Path) -> None:
+    pytest.importorskip("pyarrow")
+    archive = _export(tmp_path)
+    with zipfile.ZipFile(archive, "a") as zf:
+        zf.writestr("__MACOSX/2026/10/02/00/._a.parquet", b"junk")
+    assert len(ts_shape.ParquetLoader.load_all_files(str(archive))) == 360

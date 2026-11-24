@@ -805,12 +805,27 @@ class OEEEvents(Base):
         # A component that is undefined that day (no run time, no parts) or
         # missing from its frame stays NaN; only the counts default to 0.
         no_state = merged["availability_pct"].isna()
+        # A day the machine ran but the counter logged nothing (a counter
+        # logged on change does not log a day without parts) made 0 parts.
+        ran_without_parts = (
+            merged["_perf_resets"].isna().to_numpy()
+            & (pd.to_numeric(merged["run_seconds"], errors="coerce") > 0).to_numpy()
+            & (not perf_df.empty)
+        )
         counts = [c for c in basis if c in merged.columns]
         counts += [c for c in ("_perf_resets", "_qual_resets") if c in merged.columns]
         merged[counts] = merged[counts].fillna(0.0)
         unknown = ["availability_pct", "run_seconds", "planned_seconds"]
         unknown += ["performance_pct", "ideal_parts"]
         merged.loc[no_state, unknown] = float("nan")
+        if ran_without_parts.any():
+            merged.loc[ran_without_parts, "actual_parts"] = 0.0
+            merged.loc[ran_without_parts, "ideal_parts"] = (
+                merged.loc[ran_without_parts, "run_seconds"]
+                / ideal_cycle_time
+                * parts_per_cycle
+            )
+            merged.loc[ran_without_parts, "performance_pct"] = 0.0
         if not has_quality:
             # Quality was not measured: the 100 % is an assumption, not a count.
             for col in qual_basis:

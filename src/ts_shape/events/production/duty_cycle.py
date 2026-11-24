@@ -294,13 +294,19 @@ class DutyCycleEvents(Base):
 
         events: list[dict[str, Any]] = []
         if time_weighted:
+            gap = self._max_gap(max_gap)
+            real = len(s)
             s = self._hold_to_data_end(s[[self.time_column, "state"]], window)
             if len(s) < 2:
                 return self._with_window(pd.DataFrame(columns=cols), window)
             labels = s["state"].map({1.0: "on", 0.0: "off"}).fillna(_UNKNOWN_STATE)
-            intervals = reading_intervals(
-                s[self.time_column], labels, max_gap=self._max_gap(max_gap)
-            )
+            intervals = reading_intervals(s[self.time_column], labels)
+            if gap is not None:
+                # Only a gap between two real samples is a logging outage;
+                # the rows held until data_end are known time.
+                between_real = np.arange(len(intervals)) < real - 1
+                over = (intervals["end"] - intervals["start"]) > pd.to_timedelta(gap)
+                intervals.loc[over.to_numpy() & between_real, "state"] = EXCLUDED
             times = s[self.time_column]
             periods = floor_periods(times.iloc[0], times.iloc[-1], window)
             table = time_by_period(

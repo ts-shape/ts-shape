@@ -64,8 +64,13 @@ SUPPORT_MIN_RATIO, SUPPORT_MAX_RATIO = 0.8, 1.5
 #: ... and is phase-locked to it (mean resultant length of its phases).
 SUPPORT_MIN_LOCKING = 0.7
 #: An anchor candidate covers at least this share of the best candidate's
-#: coverage (span of its regular intervals over the recording).
-MIN_RELATIVE_COVERAGE = 0.5
+#: coverage (span of its regular intervals over the recording). A quarter:
+#: a machine down half the time (stops, changeovers) still has its cycle
+#: compete against a slow event that spans the whole recording.
+MIN_RELATIVE_COVERAGE = 0.25
+#: Among variant candidates explaining at least this share of the best
+#: candidate's adjusted eta squared, the one with the fewest values wins.
+VARIANT_ETA_TOLERANCE = 0.9
 #: A view whose time resolution is at least this share of the median cycle
 #: cannot resolve its cycles (``evaluable`` is False).
 RESOLUTION_MAX_SHARE = 0.25
@@ -449,6 +454,14 @@ class CycleProfileEvents(Base):
       from normal ones.
     - cycle_records: One record per cycle, every field at the same timestamp.
     - detect_unusual_cycles: The long and short cycle records.
+    - units: The classified cycles (for unit profilers).
+    - events_frame: Every discrete event (for unit profilers).
+    - signal_specs: Inferred spec per signal.
+    - variant_limits: Classification limits per variant.
+    - cycle_anchor: The anchor event and its signal.
+    - variant_signal: The variant signal.
+    - resolution_seconds: Time resolution of the cycle view.
+    - evaluation_reason: Reason of the all-variants row.
 
     Example:
         >>> import ts_shape
@@ -885,7 +898,7 @@ class CycleProfileEvents(Base):
         )
         preliminary = core & (np.abs(log_d - center) <= self.n_sigma * sigma)
         signals = self._signals()
-        best: tuple[float, str, pd.Series] | None = None
+        found: list[tuple[float, int, str, pd.Series]] = []
         for uuid, spec in sorted(specs.items()):
             if anchor is not None and uuid == anchor[1]:
                 continue
@@ -931,11 +944,29 @@ class CycleProfileEvents(Base):
                 (groups.size() * (groups.mean() - log_d[preliminary].mean()) ** 2).sum()
             )
             eta = between / total
-            if eta >= VARIANT_MIN_ETA_SQUARED and (best is None or eta > best[0]):
-                best = (eta, uuid, pd.Series(labels, index=cycles.index, dtype=object))
-        if best is None:
+            if eta >= VARIANT_MIN_ETA_SQUARED:
+                # Adjusted for the number of groups (as adjusted R squared):
+                # a finer grouping always explains a little more by chance.
+                n, k = int(preliminary.sum()), int(groups.ngroups)
+                adjusted = 1.0 - (1.0 - eta) * (n - 1) / max(n - k, 1)
+                found.append(
+                    (
+                        adjusted,
+                        int(groups.ngroups),
+                        uuid,
+                        pd.Series(labels, index=cycles.index, dtype=object),
+                    )
+                )
+        if not found:
             return default, None
-        return best[2], best[1]
+        # A finer signal (a fixture or order id that changes with every
+        # article block) explains at least as much as the article: ranked by
+        # the adjusted eta squared, and the simplest signal that explains
+        # almost as much as the best is the variant.
+        top = max(f[0] for f in found)
+        near = [f for f in found if f[0] >= VARIANT_ETA_TOLERANCE * top]
+        eta, _groups, uuid, labels = min(near, key=lambda f: (f[1], -f[0], f[2]))
+        return labels, uuid
 
     def _classify(self, cycles: pd.DataFrame) -> None:
         """Class and robust z of every cycle, per variant (DQ-2, US-2)."""
@@ -2002,6 +2033,81 @@ class CycleProfileEvents(Base):
     # ------------------------------------------------------------------
     # Empty outputs
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Read-only access for the unit profilers (events.production.*_profiling)
+    # ------------------------------------------------------------------
+
+    def units(self) -> pd.DataFrame:
+        """The classified cycles: one row per complete cycle.
+
+        Columns: ``cycle_uuid``, ``start_ns``, ``end_ns``, ``duration_seconds``,
+        ``variant``, ``cycle_class`` (``pause`` / ``long`` / ``short`` /
+        ``normal``) and ``z`` (robust z of the log duration). Used by the unit
+        profilers (stops, changeovers, start-ups, orders ...) to cut their
+        own units from the cycles.
+
+        Returns:
+            A copy of the cycle table (empty without a cycle anchor).
+        """
+        return self._cycles().copy()
+
+    def events_frame(self) -> pd.DataFrame:
+        """Every discrete event of every signal (see :meth:`signal_events`).
+
+        Columns: ``systime``, ``source_uuid``, ``event``, ``signal_kind``,
+        ``ns`` (integer nanoseconds), sorted by time.
+
+        Returns:
+            A copy of the event table.
+        """
+        events, _ = self._events()
+        return events.copy()
+
+    def signal_specs(self) -> dict[str, Any]:
+        """The inferred :class:`~ts_shape.signals.spec.SignalSpec` per signal.
+
+        Returns:
+            ``{uuid: SignalSpec}`` (a copy of the mapping).
+        """
+        _, specs = self._events()
+        return dict(specs)
+
+    def variant_limits(self) -> dict[str, dict[str, float]]:
+        """Classification limits per variant (``lower``, ``upper``, ``pause``, ``median`` seconds).
+
+        Returns:
+            ``{variant: {...}}`` (empty without cycles).
+        """
+        self._cycles()
+        return {k: dict(v) for k, v in self._cache.get("limits", {}).items()}
+
+    def cycle_anchor(self) -> tuple[str, str] | None:
+        """``(event label, source uuid)`` of the cycle anchor, or None."""
+        return self._anchor()
+
+    def variant_signal(self) -> str | None:
+        """The uuid of the signal that defines the product variant, or None."""
+        self._cycles()
+        value = self._cache.get("variant_uuid")
+        return None if value is None else str(value)
+
+    def resolution_seconds(self) -> float:
+        """Seconds within which events cannot be ordered (as in :meth:`evaluation_window`)."""
+        window = self.evaluation_window()
+        if window.empty:
+            return 0.0
+        value = float(window["time_resolution_seconds"].iloc[0])
+        return value if np.isfinite(value) else 0.0
+
+    def evaluation_reason(self) -> str:
+        """The ``reason`` of the ``all`` row of :meth:`evaluation_window`."""
+        window = self.evaluation_window()
+        if window.empty:
+            return "no_cycle_anchor"
+        rows = window[window["variant"] == ALL]
+        row = rows.iloc[0] if len(rows) else window.iloc[0]
+        return str(row["reason"])
 
     def _time_dtype(self) -> Any:
         if self.time_column in self.dataframe.columns:

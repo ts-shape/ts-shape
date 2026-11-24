@@ -1,3 +1,157 @@
+# November 24, 2026 (unit profilers: modular)
+refactor: one profiler base (_ProfilerBase / _UnitProfiler) with shared
+  records, verdicts, caching and a one-pass SignalIndex; restart points,
+  cycle assignment, robust scale and counter roles are shared helpers.
+  Every table and summary stays identical on the simulated machines.
+feat: profilers declare PROFILE_KIND / PROFILE_TABLES / PROFILE_OPTIONS /
+  PROFILE_ORDER / NEEDS_CYCLES; profile_units.PROFILERS is built from the
+  classes (run_profiler runs one); the invariants harness covers every
+  profiler, the control loops included.
+feat: the profilers' event-log rules and archetypes are declared once in
+  eventlog/profiler_rules.py (evaluation_window rule shared).
+feat: profile_units saves handshake_records (it was left out).
+fix: signature_evidence row order no longer changes between runs.
+fix: counter roles -- the good + bad = total identity is searched before
+  aliases (with little scrap the good count equals the total in most
+  cycles and was taken for an alias, so no bad counter was ever found);
+  two rarely moving counters are no longer aliases; the lag belongs to the
+  counter it was found on and is applied in the right direction (a bad
+  count reported late lands on its cycle); settings use the aligned count.
+fix: OrderProfileEvents raises on duplicate order_ids in the plan.
+fix: changeovers end within the new variant's block, start-ups end at the
+  next stop or changeover (no overlap, no double-counted lost time); a
+  recording without any restart no longer crashes the start-up profiler;
+  last_signal names a signal that never settled; a signal read less than
+  once per cycle is left out with a DataQualityWarning.
+fix: stop and changeover evidence uses baseline windows of the same length
+  as the units, outside every stop / changeover (a long window collected
+  any steady event); held states are tested on the first 120 s of a stop;
+  each signature reports the evidence of the test that made it one;
+  potential_rank ranks by potential as documented.
+fix: handshake waits are resolved when the resolution is below half the
+  wait (the rule was twice too strict).
+fix: curve signatures -- no crash on a signal that starts mid-recording,
+  the shift-tolerant residual no longer wraps around (spike recall up),
+  milestones computed once per variant, clustering bounded to 500 cycles
+  per signal, patterns ranked by lost time.
+fix: setting impact -- the cycle the change falls in belongs to neither
+  side; "other setting" looks at the compared cycles; recipe parameters
+  are listed, not tested (left out of the BH correction); a held setting
+  needs a 10-cycle median hold (the extra 50-cycle rule is gone).
+fix: control loops -- setpoints and process values are told apart on their
+  own readings (hold time), so on-change logging works (0 of 15 simulated
+  plants before, 15 of 15 now); the grid follows the most often read
+  signal; any unused signal can be the output; a setpoint's first reading
+  is not a step.
+fix: cycle profile -- the anchor coverage gate is a quarter (was half) of
+  the best candidate: with many stops and changeovers the part counter lost
+  to a changeover signal; the variant is chosen by the adjusted eta squared
+  and, within 90 % of the best, the fewest values (a fixture id changing
+  with every block no longer wins over the article).
+perf: signal_inventory, curve_profiles and the report helpers group the
+  frame once instead of filtering it per signal. All nine unit profilers
+  on a 3.1 M-row, 240-signal export (cycle profile reused): 218 s before
+  this round, 12 s now (scrap 101 s -> 5 s, start-ups 44 s -> 1 s,
+  settings 43 s -> 1 s).
+test: shared profiler tests (empty frame, tz-aware vs naive, coarse
+  polling, registry, save/load contents, a failing profiler), one
+  regression test per fix and a scale test (-m scale, ~2 M rows).
+
+# November 23, 2026 (unit profilers: handshakes, curves, settings)
+feat: HandshakeProfileEvents -- request/answer pairs learned from edges
+  (four- / two-phase), fixed timers vs waits on the partner, a wait
+  register with potential and cycle-time share.
+feat: CurveSignatureEvents -- golden curves per variant and analog signal,
+  time-warped between the standard cycle's milestones; per-cycle deviation
+  score, phase and direction; in-run anomalies clustered per signal into
+  fault patterns, warm-up runs after a restart kept apart.
+feat: SettingImpactEvents -- held settings found mapping-free; before/after
+  tests of every change on cycle time, segments, scrap and energy within
+  the running variant, confounders and confidence; a Theil-Sen register.
+feat: profile_units runs "handshakes", "curves" and "settings".
+feat: ControlLoopProfileEvents -- control loops found without names
+  (setpoint = stepping signal, process value = the follower, output = the
+  signal reacting at once), step metrics, IAE and saturation, diagnosis
+  oscillating / sluggish / ok and a health rank; profile_units "loops".
+feat: make_control_loops -- PI loops on first-order plants with dead time
+  (good / oscillating / sluggish tuning) and look-alike distractors.
+
+# November 23, 2026 (unit profilers: orders and scrap)
+feat: order_profiling.counter_roles -- total / good / bad counters from the
+  per-cycle identity good + bad = total (lag up to 3 cycles), aliases,
+  energy-like counters; counts at a cycle boundary belong to the ending
+  cycle.
+feat: OrderProfileEvents -- the order signal found with identify_objects
+  (an identifier held over many cycles, else the variant); per order run
+  and stop time, speed vs the variant's best, good / scrap counts and
+  attainment against an optional plan; order_register per variant.
+feat: ScrapProfileEvents -- NOK cycles from the learned bad counter and a
+  scrap Pareto of their context (stop, after stop / changeover, long /
+  short cycle, analog deviation, curve-shape anomaly, rare events) by
+  enrichment against good cycles.
+feat: profile_units runs "orders" (with plan=) and "scrap".
+
+# November 23, 2026 (unit profilers: run losses)
+Mapping-free profilers built like the cycle profiler, on its cycles.
+feat: StopProfileEvents -- stops (pause cycles, micro-stops = long cycles;
+  on a line without a cycle the off-periods of a discovered run signal),
+  their causes learned by enrichment of the events before each stop
+  (first-out signature, held state, or unexplained; analog consequences
+  and stop markers excluded), data holes as unknown time; stop_records,
+  stop_signatures (lost time, MTTR, MTBF, potential), signature_evidence,
+  evaluation_window, summary.
+feat: ChangeoverProfileEvents -- variant changes split into changeover and
+  ramp-up, the learned standard step sequence (changing ids folded into
+  one step), segment register with potential, external_possible hint,
+  from -> to matrix.
+feat: StartupProfileEvents -- restarts after pauses and changeovers, lost
+  time, running bands of every analog signal and which one is last back
+  in its band.
+feat: ts_shape.unit_profiles.profile_units runs the cycle profile once and
+  every unit profiler on it; results in ProfileResult /
+  UnitProfilesResult (save / load, one folder per profiler).
+  CycleProfileResult is now a ProfileResult; cycle_profile.cycle_tables
+  builds the cycle tables from a prepared frame and profile.
+feat: CycleProfileEvents read-only accessors for the unit profilers: units,
+  events_frame, signal_specs, variant_limits, cycle_anchor, variant_signal,
+  resolution_seconds, evaluation_reason.
+feat: make_plc_cycles options stop_causes / stop_probability,
+  changeover_steps, rampup_cycles (mould temperature), handshake_partner,
+  order_size / scrap_probability, setting_changes, energy and curve_faults
+  (default data unchanged), with truth columns; new make_line_stops.
+
+# November 19, 2026 (field test: review follow-ups)
+fix: ScrapEvents.scrap_cost matches float part numbers (1001.0) to cost keys
+  (1001) again.
+fix: ToleranceDeviationEvents raises for swapped limits only when most
+  measurements see upper < lower; limits that step at different times warn.
+fix: run_mask reads text "0"/"1"/"true"/"false"/"on"/"off" as bools.
+fix: DutyCycleEvents: the data_end hold is known time, not unknown.
+fix: OEEEvents.oee: a running day without counter rows has 0 parts and
+  0 % performance (not NaN).
+fix: FailurePredictionEvents.remaining_useful_life accepts
+  degradation_rate=0 again (direction from the data).
+fix: compact_frame keeps the uuid and value_* columns and leaves
+  non-numeric value_integer text as it is.
+fix: identify_objects label vetoes never apply to a label that names an id
+  ("Part number", "RFID Tag ID", "Werkstück-Nr"); fewer veto words.
+fix: personal-data patterns treat _ - . and digits as word boundaries
+  (User_ID, Username) and no longer match AnalogInput, Benutzeroberfläche,
+  "User defined" or "Bediener-Taste"; the number of excluded signals is
+  reported.
+fix: a counter that resets once a shift is not typed as a running timer.
+fix: CycleTimeEvents does not warn about missed pulses for a trigger logged
+  on change; state_mask warns only for a text state compared with a
+  numeric signal, and a set of states on a boolean run signal works like a
+  single state.
+fix: profile() bounds asset holes by sampled signals only; metadata extra
+  fields no longer rename config columns, flags accept on/enabled/aktiv;
+  read_workbook skips empty leading rows and reads date cells; zip exports
+  skip __MACOSX members and are opened once per call; the blank-id check
+  runs once per signal; highlight_issues checks only the thresholds given;
+  recipe phases compare as text; custom value_column_<role> columns keep
+  their role.
+
 # November 19, 2026 (field test: metadata, profiling, loading)
 feat: MetadataJsonLoader.from_workbook (an .xlsx datapoint list, read with
   the standard library -- loader.metadata.workbook.read_workbook) and
@@ -63,11 +217,12 @@ fix: DataQualityWarning for: recipe phases that never occur; parts without
   a cost (costed at 0); emission-factor uuids not in the data; an
   identifier signal (part, order, batch, recipe ...) holding only empty
   text.
-feat: CarbonIntensityEvents signal_kind ("auto" default, "interval",
-  "meter", "power"): a power reading is integrated over time and a
-  cumulative meter read as increments, instead of summing the samples.
-  Behaviour change: "auto" reads a counter as a meter and a continuous
-  signal sampled faster than once a minute as power (with a warning).
+feat: CarbonIntensityEvents signal_kind ("interval" default, "meter",
+  "power", "auto"): a power reading is integrated over time (not held
+  across a logging outage) and a cumulative meter read as increments. The
+  default still sums the readings, and warns when a source looks like a
+  meter or a power reading (sampled at most once a minute or logged on
+  change), naming the signal_kind to pass.
 fix: StatisticalProcessControlEvents warns when the moving-range sigma is
   below 0.1 x the reference standard deviation (held values) and when more
   than 25 % of the points lie beyond 3 sigma.

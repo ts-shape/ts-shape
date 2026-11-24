@@ -80,6 +80,7 @@ nav:
       - Part Tracking: modules/production/part-tracking.md
       - Cycle Time: modules/production/cycle-time.md
       - Cycle Time Profiling: modules/production/cycle-profiling.md
+      - Unit Profilers: modules/production/unit-profiles.md
       - Downtime: modules/production/downtime.md
       - Quality Tracking: modules/production/quality-tracking.md
       - Shift Reporting: modules/production/shift-reporting.md

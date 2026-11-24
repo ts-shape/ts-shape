@@ -66,6 +66,8 @@ def _warn_missed_pulses(times: pd.Series, trigger: pd.Series, uuid: str) -> bool
     period, _, regular = _interval_stats(pd.to_datetime(times).reset_index(drop=True))
     if period is None or regular < POLLED_REGULAR_SHARE:
         return False  # change-encoded: one row per edge is normal
+    if not bool((on[1:] == on[:-1]).any()):
+        return False  # every row is a change: logged on change, not polled
     if single < SINGLE_SAMPLE_PULSE_SHARE:
         return False
     warnings.warn(

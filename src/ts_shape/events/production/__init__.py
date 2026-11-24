@@ -57,6 +57,71 @@ Daily Production Tracking Classes:
   - cycle_records: One record per cycle at one timestamp.
   - detect_unusual_cycles: Long and short cycles.
   - signal_events: The events every signal was turned into.
+  - units: The classified cycles (for unit profilers).
+  - events_frame: Every discrete event (for unit profilers).
+  - signal_specs: Inferred spec per signal.
+  - variant_limits: Classification limits per variant.
+  - cycle_anchor: The anchor event and its signal.
+  - variant_signal: The variant signal.
+  - resolution_seconds: Time resolution of the cycle view.
+  - evaluation_reason: Reason of the all-variants row.
+
+- SettingImpactEvents: Before/after effect of changes of held settings.
+  - setting_changes: Every change of a held setting.
+  - setting_impact: Before/after tests per change and metric.
+  - setting_register: Sensitivity and best value per setting.
+  - evaluation_window: Whether the tests can be trusted.
+  - summary: Headline numbers.
+
+- CurveSignatureEvents: Golden curves and named fault patterns of analog signals per cycle.
+  - curve_golden: Golden curve band per variant and signal.
+  - curve_cycle_scores: Deviation score, phase and pattern per cycle.
+  - curve_patterns: Clustered fault patterns with lost time.
+  - evaluation_window: Evaluability per variant and signal.
+  - summary: Headline numbers.
+
+- HandshakeProfileEvents: Mapping-free request/answer pairs and the waits on partners.
+  - handshake_pairs: Discovered request/answer pairs, two- or four-phase.
+  - handshake_records: One wait interval per request.
+  - handshake_register: Wait per pair with potential and cycle-time share.
+  - evaluation_window: Evaluability per pair.
+  - summary: Headline numbers.
+
+- ScrapProfileEvents: Mapping-free scrap Pareto without reason codes.
+  - nok_records: One record per cycle with a bad part.
+  - scrap_pareto: Contexts where bad parts are over-represented.
+  - counter_roles: Total, good and bad counters learned from the data.
+  - evaluation_window: Enough bad parts to trust the profile?
+  - summary: Headline numbers.
+
+- OrderProfileEvents: Mapping-free order profiling: speed, scrap, attainment.
+  - order_records: One record per production order.
+  - order_register: Lost time of orders per variant.
+  - counter_roles: Total, good and bad counters learned from the data.
+  - evaluation_window: Enough orders to trust the profile?
+  - summary: Headline numbers.
+
+- StartupProfileEvents: Mapping-free start-up profiling after stops and changeovers.
+  - startup_records: One record per start-up.
+  - startup_signals: Which signals are last back in their running band.
+  - startup_register: Start-up time and potential per trigger.
+  - evaluation_window: Enough start-ups to trust the profile?
+  - summary: Headline numbers.
+
+- ChangeoverProfileEvents: Mapping-free changeover (SMED) profiling.
+  - changeover_records: One record per changeover.
+  - changeover_view: The learned standard step sequence.
+  - changeover_register: Potential per changeover segment.
+  - changeover_matrix: Changeover times per from -> to variant.
+  - evaluation_window: Enough changeovers to trust the profile?
+  - summary: Headline numbers.
+
+- StopProfileEvents: Mapping-free stop profiling: causes and lost time.
+  - stop_records: One record per stop with its signature.
+  - stop_signatures: Lost time, MTTR and potential per stop signature.
+  - signature_evidence: Why an event counts as a stop signature.
+  - evaluation_window: Enough stops to trust the profile?
+  - summary: Headline numbers.
 
 - ShiftReportEvents: Shift-based performance analysis.
   - shift_production: Production per shift.
@@ -231,9 +296,11 @@ from .alarm_management import AlarmManagementEvents
 from .batch_tracking import BatchTrackingEvents
 from .bottleneck_detection import BottleneckDetectionEvents
 from .changeover import ChangeoverEvents
+from .changeover_profiling import ChangeoverProfileEvents, StartupProfileEvents
 
 # Traceability
 from .continuous_process_alignment import ContinuousProcessAlignmentEvents
+from .curve_signature import CurveSignatureEvents
 from .cycle_profiling import CycleProfileEvents
 from .cycle_time_tracking import (
     CycleTimeEvents,
@@ -246,6 +313,7 @@ from .downtime_tracking import (
 from .duty_cycle import DutyCycleEvents
 from .flow_constraints import FlowConstraintEvents
 from .flow_metrics import FlowMetricsEvents
+from .handshake_profiling import HandshakeProfileEvents
 from .line_balancing import LineBalancingEvents
 from .line_throughput import LineThroughputEvents
 from .long_downtime_events import LongDowntimeEvents
@@ -265,6 +333,7 @@ from .operator_performance import (
     OperatorPerformanceEvents,
     OperatorPerformanceTracking,  # deprecated alias
 )
+from .order_profiling import OrderProfileEvents, ScrapProfileEvents
 from .order_traceability import OrderTraceabilityEvents, ValueTraceabilityEvents
 
 # Daily Production Tracking Classes
@@ -297,6 +366,7 @@ from .scrap_tracking import (
     ScrapEvents,
     ScrapTracking,  # deprecated alias
 )
+from .setting_impact import SettingImpactEvents
 from .setup_time_tracking import (
     SetupTimeEvents,
     SetupTimeTracking,  # deprecated alias
@@ -309,12 +379,21 @@ from .shift_reporting import (
     ShiftReportEvents,
     ShiftReporting,  # deprecated alias
 )
+from .stop_profiling import StopProfileEvents
 from .target_tracking import (
     TargetEvents,
     TargetTracking,  # deprecated alias
 )
 
 __all__ = [
+    "SettingImpactEvents",
+    "CurveSignatureEvents",
+    "HandshakeProfileEvents",
+    "ScrapProfileEvents",
+    "OrderProfileEvents",
+    "StartupProfileEvents",
+    "ChangeoverProfileEvents",
+    "StopProfileEvents",
     "OperatingStateEvents",
     # Event Detection
     "MachineStateEvents",

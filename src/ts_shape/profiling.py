@@ -18,15 +18,18 @@ values over several ``value_*`` columns.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.signals.infer import _iter_signal_groups, infer_spec
 from ts_shape.signals.spec import SignalSpec, SignalSpecs
 from ts_shape.utils.counters import count_resets
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
 
 __all__ = ["profile", "ProfileReport"]
@@ -352,7 +355,13 @@ def _asset_holes(
     every = every.drop_duplicates().sort_values().reset_index(drop=True)
     limit = ASSET_HOLE_MIN
     for spec in specs.values():
-        if spec.max_gap is not None and spec.max_gap > limit:
+        # Only sampled signals bound the hole: an event signal's long gaps
+        # are its normal silence.
+        if (
+            spec.encoding == "sampled"
+            and spec.max_gap is not None
+            and spec.max_gap > limit
+        ):
             limit = spec.max_gap
     diffs = every.diff()
     holes = diffs[diffs > limit]
@@ -456,7 +465,14 @@ def profile(
     if not labels.empty and exclude:
         pattern = personal_pattern(tuple(exclude))
         hidden = {u for u, label in labels.items() if pattern.search(str(label))}
+        hidden &= set(dataframe[uuid_column].astype(str).unique())
         if hidden:
+            warnings.warn(
+                f"profile: {len(hidden)} signal(s) left out: their label matches "
+                "a personal-data pattern (pass exclude=() to keep every signal).",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
             keys = dataframe[uuid_column].astype(str)
             dataframe = dataframe[~keys.isin(hidden).to_numpy()]
     inferred: dict[str, SignalSpec] = {}

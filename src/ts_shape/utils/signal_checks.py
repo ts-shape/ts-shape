@@ -531,8 +531,13 @@ def _value_arguments(
     }
     if not columns:
         return {}
-    every = _value_columns_of(named)
-    roles = [n[len("value_column_") :] for n in every if n != "value_column"]
+    # Roles come from every value_column_<role> argument, whatever column it
+    # names (a custom column still claims its role's uuids).
+    roles = [
+        n[len("value_column_") :]
+        for n in named
+        if isinstance(n, str) and n.startswith("value_column_")
+    ]
     found: dict[str, list[str]] = {}
     for name, value in named.items():
         uuids = _uuid_arguments(name, value) if isinstance(name, str) else []
@@ -696,9 +701,11 @@ def resolve_value_columns(
     return changed if changed != kwargs else kwargs
 
 
-#: Words in an argument name that mark an identifier signal (part number,
+#: Name parts of an argument that mark an identifier signal (part number,
 #: order, batch ...): such a signal holding only blank text is reported.
-_ID_WORDS = ("id_uuid", "part", "order", "batch", "serial", "recipe", "lot")
+_ID_WORDS = frozenset({"id", "part", "order", "batch", "serial", "recipe", "lot"})
+# ``{(frame ref, length, uuid): blank}`` per detector: checked once per signal.
+_BLANK_CHECKED = "_ts_shape_blank_checked"
 
 
 def check_blank_ids(
@@ -719,10 +726,21 @@ def check_blank_ids(
         bound = inspect.signature(fn).bind_partial(obj, *args, **kwargs)
     except TypeError:
         return
+    done = getattr(obj, _BLANK_CHECKED, None)
+    if done is None:
+        done = set()
+        try:
+            object.__setattr__(obj, _BLANK_CHECKED, done)
+        except (AttributeError, TypeError):
+            pass
     for name, value in bound.arguments.items():
-        if not any(word in name for word in _ID_WORDS):
+        if not _ID_WORDS & set(name.split("_")):
             continue
         for uuid in _signal_values(name, value):
+            key = (id(frame), len(frame), uuid)
+            if key in done:
+                continue
+            done.add(key)
             rows = frame.loc[(frame[column] == uuid).to_numpy(), "value_string"]
             text = rows.dropna()
             if text.empty or not text.astype(str).str.strip().eq("").all():

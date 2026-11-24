@@ -52,6 +52,11 @@ _CAPABILITY_COLUMNS = [
 ]
 
 
+#: Share of measurements with upper < lower above which the limits are
+#: taken to be swapped (an error) rather than briefly crossing (a warning).
+SWAPPED_LIMIT_SHARE = 0.5
+
+
 class ToleranceDeviationEvents(Base):
     """
     Inherits from Base and processes DataFrame data for specific events, comparing tolerance and actual values.
@@ -525,13 +530,26 @@ class ToleranceDeviationEvents(Base):
             and self.lower_tolerance_uuid is not None
         )
         if two_sided:
-            swapped = int((upper < lower).sum())
-            if swapped:
+            on_actual = (df["uuid"] == self.actual_uuid).to_numpy()
+            crossed = (upper < lower).to_numpy() & on_actual
+            swapped, checked = int(crossed.sum()), int(on_actual.sum())
+            if checked and swapped > SWAPPED_LIMIT_SHARE * checked:
                 raise ValueError(
                     f"ToleranceDeviationEvents: the upper limit "
                     f"({self.upper_tolerance_uuid!r}) is below the lower limit "
-                    f"({self.lower_tolerance_uuid!r}) on {swapped} row(s); are "
-                    "upper_tolerance_uuid and lower_tolerance_uuid swapped?"
+                    f"({self.lower_tolerance_uuid!r}) on {swapped} of {checked} "
+                    "measurement(s); are upper_tolerance_uuid and "
+                    "lower_tolerance_uuid swapped?"
+                )
+            if swapped:
+                # Time-varying limits that step one after the other cross
+                # briefly; those measurements are checked against crossed limits.
+                warnings.warn(
+                    f"ToleranceDeviationEvents: on {swapped} of {checked} "
+                    "measurement(s) the upper limit is below the lower limit "
+                    "(the limit signals change at different times).",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
                 )
             df["tolerance_range"] = upper - lower
         else:

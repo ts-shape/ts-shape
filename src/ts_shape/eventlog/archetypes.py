@@ -179,6 +179,8 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("CycleProfileEvents", "detect_cycle_influencers"): "static",
     ("CycleProfileEvents", "cycle_records"): "outcome",
     ("CycleProfileEvents", "detect_unusual_cycles"): "threshold",
+    ("CycleProfileEvents", "units"): "static",
+    ("CycleProfileEvents", "events_frame"): "static",
     ("CycleTimeEvents", "detect_unusual_cycles"): "threshold",
     ("CycleTimeEvents", "cycle_time_by_part"): "aggregate",
     ("CycleTimeEvents", "cycle_time_statistics"): "aggregate",
@@ -385,3 +387,13 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("LeadTimeAnalysisEvents", "detect_lead_time_anomalies"): "threshold",
     ("LeadTimeAnalysisEvents", "lead_time_statistics"): "aggregate",
 }
+
+
+def _profiler_archetypes() -> dict[tuple[str, str], str]:
+    """The unit profilers' archetypes from :mod:`ts_shape.eventlog.profiler_rules`."""
+    from ts_shape.eventlog.profiler_rules import profiler_rule_specs
+
+    return {key: spec["archetype"] for key, spec in profiler_rule_specs().items()}
+
+
+ARCHETYPE_BY_METHOD.update(_profiler_archetypes())

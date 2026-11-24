@@ -5054,13 +5054,13 @@ def _empty_table() -> pd.DataFrame:
 LABEL_VETOES: tuple[tuple[str, str, str], ...] = (
     (
         "counter",
-        r"quantit|counter|count\b|z[aä]hler|st[uü]ck|gutteil|schlechtteil"
-        r"|\bok\b|\bnok\b|\bgood\b|\bbad\b|\bparts?\b|menge",
+        r"quantit|counter|count\b|z[aä]hler|gutteil|schlechtteil|menge"
+        r"|\b(?:good|ok|nok|scrap|reject)[ _-]?(?:parts?|count|pcs)\b|st[uü]ckzahl",
         "names a quantity",
     ),
     (
         "measurement",
-        r"time|zeit|minute|hour|stunde|\bday\b|\btag\b|weekday|wochentag"
+        r"time|zeit|minute|hour|stunde|\bday\b|weekday|wochentag"
         r"|second|sekunde|\bmonth\b|\byear\b|duration|dauer|clock"
         r"|operating.?hour|betriebsstunde",
         "names a time or clock value",
@@ -5068,9 +5068,16 @@ LABEL_VETOES: tuple[tuple[str, str, str], ...] = (
     (
         "measurement",
         r"power|energy|energie|leistung|\bkwh?\b|consumption|verbrauch"
-        r"|temperat|pressure|druck|cushion|polster|speed|drehzahl|weight|gewicht",
+        r"|temperat|pressure|\bdruck\b|cushion|polster|speed|drehzahl|weight|gewicht",
         "names a physical measurement",
     ),
+)
+#: A label that also names an identifier is never vetoed ("Part number",
+#: "Werkstück-Nr", "RFID Tag ID", "Order start time" stays a time only when
+#: no id word is present).
+LABEL_ID_WORDS = (
+    r"(?<![a-z])(?:nr|no|nummer|number|id|ident|serial|barcode|code|rfid|sn)"
+    r"(?![a-z])"
 )
 
 
@@ -5084,11 +5091,12 @@ def _apply_label_vetoes(
         (role, re.compile(pattern, re.IGNORECASE), why)
         for role, pattern, why in LABEL_VETOES
     ]
+    id_word = re.compile(LABEL_ID_WORDS, re.IGNORECASE)
     for sig in signals:
         if sig.role != "identifier" or sig.uuid in hints:
             continue
         label = labels.get(sig.uuid)
-        if not label:
+        if not label or id_word.search(str(label)):
             continue
         for role, pattern, why in compiled:
             if pattern.search(str(label)):

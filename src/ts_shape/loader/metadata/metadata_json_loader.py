@@ -20,7 +20,20 @@ def _truthy(value: Any) -> Any:
         text = value.strip().lower()
         if not text:
             return pd.NA
-        return text in ("1", "true", "yes", "y", "x", "ja", "wahr")
+        return text in (
+            "1",
+            "true",
+            "t",
+            "yes",
+            "y",
+            "x",
+            "on",
+            "enabled",
+            "active",
+            "aktiv",
+            "ja",
+            "wahr",
+        )
     return bool(value)
 
 
@@ -227,6 +240,12 @@ class MetadataJsonLoader:
 
         # Flatten config into columns (prefix to avoid collisions)
         cfg = pd.json_normalize(base["config"].apply(lambda x: x or {}))
+        # An extra top-level field that shares a name with a config key is
+        # renamed ("top.<name>"), so config columns keep their names.
+        extra = [c for c in base.columns if c not in ("uuid", "label", "config")]
+        clash = {c: f"top.{c}" for c in extra if c in cfg.columns}
+        if clash:
+            base = base.rename(columns=clash)
         if any(c in base.columns for c in cfg.columns):
             cfg = cfg.add_prefix("config.")
         df = pd.concat([base.drop(columns=["config"]), cfg], axis=1)

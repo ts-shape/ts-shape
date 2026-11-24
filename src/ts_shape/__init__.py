@@ -28,7 +28,9 @@ if TYPE_CHECKING:
     from ts_shape.context.value_mapping import ValueMapper as ValueMapper
     from ts_shape.cycle_profile import CycleProfileResult as CycleProfileResult
     from ts_shape.cycle_profile import profile_cycles as profile_cycles
+    from ts_shape.datasets import make_control_loops as make_control_loops
     from ts_shape.datasets import make_id_signal as make_id_signal
+    from ts_shape.datasets import make_line_stops as make_line_stops
     from ts_shape.datasets import make_object_signals as make_object_signals
     from ts_shape.datasets import make_plc_cycles as make_plc_cycles
     from ts_shape.datasets import make_timeseries as make_timeseries
@@ -136,6 +138,9 @@ if TYPE_CHECKING:
     from ts_shape.events.engineering.control_loop_health import (
         ControlLoopHealthEvents as ControlLoopHealthEvents,
     )
+    from ts_shape.events.engineering.control_loop_profiling import (
+        ControlLoopProfileEvents as ControlLoopProfileEvents,
+    )
     from ts_shape.events.engineering.disturbance_recovery import (
         DisturbanceRecoveryEvents as DisturbanceRecoveryEvents,
     )
@@ -205,8 +210,17 @@ if TYPE_CHECKING:
     from ts_shape.events.production.changeover import (
         ChangeoverEvents as ChangeoverEvents,
     )
+    from ts_shape.events.production.changeover_profiling import (
+        ChangeoverProfileEvents as ChangeoverProfileEvents,
+    )
+    from ts_shape.events.production.changeover_profiling import (
+        StartupProfileEvents as StartupProfileEvents,
+    )
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
+    )
+    from ts_shape.events.production.curve_signature import (
+        CurveSignatureEvents as CurveSignatureEvents,
     )
     from ts_shape.events.production.cycle_profiling import (
         CycleProfileEvents as CycleProfileEvents,
@@ -229,6 +243,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.flow_metrics import (
         FlowMetricsEvents as FlowMetricsEvents,
+    )
+    from ts_shape.events.production.handshake_profiling import (
+        HandshakeProfileEvents as HandshakeProfileEvents,
     )
     from ts_shape.events.production.line_balancing import (
         LineBalancingEvents as LineBalancingEvents,
@@ -259,19 +276,25 @@ if TYPE_CHECKING:
     from ts_shape.events.production.operator_performance import (
         OperatorPerformanceTracking as OperatorPerformanceTracking,
     )
+    from ts_shape.events.production.order_profiling import (
+        OrderProfileEvents as OrderProfileEvents,
+    )
+    from ts_shape.events.production.order_profiling import (
+        ScrapProfileEvents as ScrapProfileEvents,
+    )
     from ts_shape.events.production.order_traceability import (
         OrderTraceabilityEvents as OrderTraceabilityEvents,
     )
     from ts_shape.events.production.order_traceability import (
         ValueTraceabilityEvents as ValueTraceabilityEvents,
     )
+    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.part_tracking import (
         PartProductionEvents as PartProductionEvents,
     )
     from ts_shape.events.production.part_tracking import (
         PartProductionTracking as PartProductionTracking,
     )
-    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.performance_loss import (
         PerformanceLossEvents as PerformanceLossEvents,
     )
@@ -303,6 +326,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.scrap_tracking import ScrapEvents as ScrapEvents
     from ts_shape.events.production.scrap_tracking import ScrapTracking as ScrapTracking
+    from ts_shape.events.production.setting_impact import (
+        SettingImpactEvents as SettingImpactEvents,
+    )
     from ts_shape.events.production.setup_time_tracking import (
         SetupTimeEvents as SetupTimeEvents,
     )
@@ -320,6 +346,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.shift_reporting import (
         ShiftReporting as ShiftReporting,
+    )
+    from ts_shape.events.production.stop_profiling import (
+        StopProfileEvents as StopProfileEvents,
     )
     from ts_shape.events.production.target_tracking import TargetEvents as TargetEvents
     from ts_shape.events.production.target_tracking import (
@@ -515,6 +544,7 @@ if TYPE_CHECKING:
     from ts_shape.transform.time_functions.timezone_shift import (
         TimezoneShift as TimezoneShift,
     )
+    from ts_shape.unit_profiles import profile_units as profile_units
     from ts_shape.utils.frames import compact_frame as compact_frame
 
 # Library best practice: add NullHandler so that consuming applications
@@ -571,6 +601,14 @@ _LAZY: dict[str, str] = {
     "BottleneckDetectionEvents": "ts_shape.events.production.bottleneck_detection",
     "ChangeoverEvents": "ts_shape.events.production.changeover",
     "ContinuousProcessAlignmentEvents": "ts_shape.events.production.continuous_process_alignment",
+    "StopProfileEvents": "ts_shape.events.production.stop_profiling",
+    "ChangeoverProfileEvents": "ts_shape.events.production.changeover_profiling",
+    "StartupProfileEvents": "ts_shape.events.production.changeover_profiling",
+    "OrderProfileEvents": "ts_shape.events.production.order_profiling",
+    "ScrapProfileEvents": "ts_shape.events.production.order_profiling",
+    "HandshakeProfileEvents": "ts_shape.events.production.handshake_profiling",
+    "CurveSignatureEvents": "ts_shape.events.production.curve_signature",
+    "SettingImpactEvents": "ts_shape.events.production.setting_impact",
     "CycleProfileEvents": "ts_shape.events.production.cycle_profiling",
     "CycleTimeEvents": "ts_shape.events.production.cycle_time_tracking",
     "DowntimeEvents": "ts_shape.events.production.downtime_tracking",
@@ -603,6 +641,7 @@ _LAZY: dict[str, str] = {
     "ShiftReportEvents": "ts_shape.events.production.shift_reporting",
     "TargetEvents": "ts_shape.events.production.target_tracking",
     # -- events.engineering ---------------------------------------------
+    "ControlLoopProfileEvents": "ts_shape.events.engineering.control_loop_profiling",
     "ControlLoopHealthEvents": "ts_shape.events.engineering.control_loop_health",
     "DisturbanceRecoveryEvents": "ts_shape.events.engineering.disturbance_recovery",
     "MaterialBalanceEvents": "ts_shape.events.engineering.material_balance",
@@ -662,6 +701,7 @@ _LAZY: dict[str, str] = {
     # -- top-level utilities --------------------------------------------
     "list_detectors": "ts_shape.catalog",
     "make_timeseries": "ts_shape.datasets",
+    "profile_units": "ts_shape.unit_profiles",
     "profile": "ts_shape.profiling",
     "ProfileReport": "ts_shape.profiling",
     "infer_specs": "ts_shape.signals",
@@ -673,6 +713,8 @@ _LAZY: dict[str, str] = {
     "SignalSpecs": "ts_shape.signals",
     "make_id_signal": "ts_shape.datasets",
     "make_object_signals": "ts_shape.datasets",
+    "make_control_loops": "ts_shape.datasets",
+    "make_line_stops": "ts_shape.datasets",
     "make_plc_cycles": "ts_shape.datasets",
     "profile_cycles": "ts_shape.cycle_profile",
     "CycleProfileResult": "ts_shape.cycle_profile",

@@ -1,5 +1,6 @@
 import logging
 import warnings
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_per_window
 from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.time_accounting import (
+    EXCLUDED,
     grouper_periods,
     reading_intervals,
     split_intervals,
@@ -113,7 +115,7 @@ class CarbonIntensityEvents(Base):
         scope: int = 0,
         value_column: str = "value_double",
         window: str = "1D",
-        signal_kind: str = "auto",
+        signal_kind: str = "interval",
     ) -> pd.DataFrame:
         """CO2e emissions per configured source per time window.
 
@@ -127,12 +129,16 @@ class CarbonIntensityEvents(Base):
                 (summed per window); ``"meter"`` -- a cumulative meter
                 (reset-aware increments per window); ``"power"`` -- a rate
                 such as kW (integrated over time: value x hours, so kW gives
-                kWh); ``"auto"`` (default) -- inferred per source from its
-                data (:func:`ts_shape.signals.infer.infer_spec`): a counter is
-                a meter, a continuous signal sampled faster than once a
-                minute is a power reading, anything else an interval
-                reading. A choice other than ``"interval"`` made by
-                ``"auto"`` is stated in a ``DataQualityWarning``.
+                kWh; a sampled signal is not held across a gap longer than
+                its inferred ``max_gap``); ``"auto"`` -- inferred per source
+                from its data (:func:`ts_shape.signals.infer.infer_spec`): a
+                counter is a meter, a continuous signal sampled at most once a
+                minute or logged on change is a power reading, anything else
+                an interval reading. Default ``"interval"`` (the readings are
+                summed); a source that looks like a meter or a power reading
+                then emits a ``DataQualityWarning`` naming the
+                ``signal_kind`` to pass. ``"auto"`` states its choice in a
+                ``DataQualityWarning`` too.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid, scope,
@@ -162,8 +168,8 @@ class CarbonIntensityEvents(Base):
                 continue
 
             raw[self.time_column] = pd.to_datetime(raw[self.time_column])
-            kind = self._kind(raw, src_uuid, value_column, signal_kind)
-            agg = self._consumption(raw, value_column, window, kind)
+            kind, spec = self._kind(raw, src_uuid, value_column, signal_kind)
+            agg = self._consumption(raw, value_column, window, kind, spec)
             agg["uuid"] = self.event_uuid
             agg["source_uuid"] = src_uuid
             agg["scope"] = src_scope
@@ -206,62 +212,95 @@ class CarbonIntensityEvents(Base):
             window,
         )
 
-    def _kind(
-        self, raw: pd.DataFrame, uuid: str, value_column: str, signal_kind: str
-    ) -> str:
-        """The reading kind of one source (``signal_kind`` or inferred)."""
-        if signal_kind != "auto":
-            return signal_kind
+    def _spec(self, raw: pd.DataFrame, uuid: str, value_column: str) -> Any:
+        """The inferred spec of one source, or None for fewer than 3 values."""
         from ts_shape.signals.infer import infer_spec
 
         frame = raw[[self.time_column, value_column]].rename(
             columns={value_column: "value_double"}
         )
         frame["value_double"] = pd.to_numeric(frame["value_double"], errors="coerce")
-        if frame["value_double"].notna().sum() < 3:
-            return "interval"
-        spec = infer_spec(frame, uuid, self.time_column)
-        period = spec.nominal_period
+        frame = frame.dropna(subset=["value_double"])
+        if len(frame) < 3:
+            return None
+        return infer_spec(frame, uuid, self.time_column)
+
+    @staticmethod
+    def _looks_like(spec: Any) -> tuple[str, str] | None:
+        """``(kind, why)`` when ``spec`` looks like a meter or a power reading."""
+        if spec is None:
+            return None
         if spec.kind == "counter":
-            kind, why = "meter", "a cumulative meter (it only counts up)"
-        elif (
-            spec.kind == "continuous"
-            and not spec.is_change_encoded
-            and period is not None
-            and period < POWER_MAX_PERIOD
-        ):
-            kind = "power"
-            why = (
-                f"a power reading (sampled every {period.total_seconds():g} s); "
-                "it is integrated over time (value x hours)"
+            return "meter", "a cumulative meter (it only counts up)"
+        if spec.kind != "continuous":
+            return None
+        period = spec.nominal_period
+        if spec.is_change_encoded:
+            return "power", "a power reading (a level logged on change)"
+        if period is not None and period <= POWER_MAX_PERIOD:
+            return (
+                "power",
+                f"a power reading (a level sampled every {period.total_seconds():g} s)",
             )
-        else:
-            return "interval"
-        warnings.warn(
-            f"CarbonIntensityEvents: source {uuid!r} looks like {why}, so it is "
-            f"read as signal_kind={kind!r}. Pass signal_kind='interval' if each "
-            "reading is the consumption since the previous one.",
-            DataQualityWarning,
-            stacklevel=caller_stacklevel(),
-        )
-        return kind
+        return None
+
+    def _kind(
+        self, raw: pd.DataFrame, uuid: str, value_column: str, signal_kind: str
+    ) -> tuple[str, Any]:
+        """The reading kind of one source and its inferred spec."""
+        spec = self._spec(raw, uuid, value_column)
+        guess = self._looks_like(spec)
+        if signal_kind == "auto":
+            if guess is None:
+                return "interval", spec
+            kind, why = guess
+            warnings.warn(
+                f"CarbonIntensityEvents: source {uuid!r} looks like {why}, so "
+                f"signal_kind='auto' reads it as {kind!r}. Pass signal_kind "
+                "explicitly to choose.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            return kind, spec
+        if signal_kind == "interval" and guess is not None:
+            kind, why = guess
+            warnings.warn(
+                f"CarbonIntensityEvents: source {uuid!r} looks like {why}, but "
+                "its readings are summed as interval consumption. If that is "
+                f"wrong, pass signal_kind={kind!r}.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+        return signal_kind, spec
 
     def _consumption(
-        self, raw: pd.DataFrame, value_column: str, window: str, kind: str
+        self,
+        raw: pd.DataFrame,
+        value_column: str,
+        window: str,
+        kind: str,
+        spec: Any = None,
     ) -> pd.DataFrame:
         """``start``, ``consumption`` per window for one source."""
         series = pd.to_numeric(
             raw.set_index(self.time_column)[value_column], errors="coerce"
         )
+        grid = series.resample(window).sum().index
         if kind == "meter":
-            per = counter_per_window(series, window, handle_resets=True)
+            per = counter_per_window(series.dropna(), window, handle_resets=True)
+            per = per.reindex(grid, fill_value=0.0)
         elif kind == "power":
             values = series.dropna()
             times = pd.Series(values.index)
             if len(values) < 2:
-                per = series.resample(window).sum() * 0.0
+                per = pd.Series(0.0, index=grid)
             else:
-                intervals = reading_intervals(times, pd.Series(range(len(values))))
+                # A sampled signal is not held across a logging outage.
+                max_gap = getattr(spec, "max_gap", None)
+                intervals = reading_intervals(
+                    times, pd.Series(range(len(values))), max_gap=max_gap
+                )
+                intervals = intervals[intervals["state"] != EXCLUDED]
                 intervals["value"] = values.to_numpy()[
                     intervals["state"].to_numpy(dtype=int)
                 ]
@@ -272,7 +311,7 @@ class CarbonIntensityEvents(Base):
                 energy = pieces["value"] * pieces["seconds"] / 3600.0
                 per = energy.groupby(pieces["period"].to_numpy()).sum()
                 per.index = pd.DatetimeIndex(per.index)
-                per = per.reindex(series.resample(window).sum().index, fill_value=0.0)
+                per = per.reindex(grid, fill_value=0.0)
         else:
             per = series.resample(window).sum()
         out = per.rename("consumption").to_frame().reset_index()
@@ -283,7 +322,7 @@ class CarbonIntensityEvents(Base):
         *,
         value_column: str = "value_double",
         window: str = "1D",
-        signal_kind: str = "auto",
+        signal_kind: str = "interval",
     ) -> pd.DataFrame:
         """Aggregate Scope 1 + Scope 2 emissions across all configured meters.
 
@@ -347,7 +386,7 @@ class CarbonIntensityEvents(Base):
         value_column_counter: str = "value_integer",
         window: str = "1D",
         handle_resets: bool = True,
-        signal_kind: str = "auto",
+        signal_kind: str = "interval",
     ) -> pd.DataFrame:
         """Carbon intensity per unit produced (kgCO2e / unit).
 

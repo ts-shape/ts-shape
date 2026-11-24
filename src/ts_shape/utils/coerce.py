@@ -80,6 +80,18 @@ def bool_or_false(values: pd.Series) -> pd.Series:
     return pd.Series(out, index=values.index, name=values.name)
 
 
+#: Text values that read as a bool in a run signal.
+_BOOL_WORDS = {
+    "1": True,
+    "true": True,
+    "yes": True,
+    "on": True,
+    "0": False,
+    "false": False,
+    "no": False,
+    "off": False,
+}
+
 #: How many distinct values are shown in the run-state warning.
 _SHOWN_STATES = 6
 
@@ -99,6 +111,9 @@ def _unmapped_states(known: pd.Series) -> list[Any] | None:
         shown = sorted(float(v) for v in levels.tolist())[:_SHOWN_STATES]
         return [int(v) if v.is_integer() else v for v in shown]
     if known.map(lambda v: isinstance(v, (bool, np.bool_))).all():
+        return None
+    words = known.map(lambda v: isinstance(v, str) and v.strip().lower() in _BOOL_WORDS)
+    if bool(words.all()):
         return None
     numbers = pd.to_numeric(known, errors="coerce")
     if numbers.notna().all() and set(numbers.unique().tolist()) <= {0.0, 1.0}:
@@ -172,13 +187,26 @@ def run_mask(
             label = what or "run signal"
             warnings.warn(
                 f"{label} holds the values {shown}, not a bool; read as a bool, "
-                "every non-zero number and every non-empty text counts as "
-                "running. Pass run_states={...} with the values that mean "
+                "every non-zero number and every non-empty text (other than "
+                "0/1/true/false/on/off) counts as running. Pass run_states={...} with the values that mean "
                 "running (or value_range=(low, high)).",
                 DataQualityWarning,
                 stacklevel=caller_stacklevel(),
             )
-    return bool_or_false(values).astype("boolean").where(known, pd.NA)
+    cast = bool_or_false(values)
+    if not pd.api.types.is_numeric_dtype(values) and not pd.api.types.is_bool_dtype(
+        values
+    ):
+        # Text "0" / "false" means not running (a plain bool cast reads every
+        # non-empty text as True).
+        words = values[known].map(
+            lambda v: _BOOL_WORDS.get(v.strip().lower()) if isinstance(v, str) else None
+        )
+        words = words.dropna()
+        if len(words):
+            cast = cast.copy()
+            cast.loc[words.index] = words.astype(bool).to_numpy()
+    return cast.astype("boolean").where(known, pd.NA)
 
 
 def run_bool(

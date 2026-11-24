@@ -24,6 +24,7 @@ from ts_shape.events.production._counter_groups import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.normalize import id_text
 from ts_shape.utils.shifts import assign_shift, production_dates
 from ts_shape.utils.validate import check_known_names
 
@@ -350,17 +351,23 @@ class ScrapEvents(Base):
         totals = counter_totals(
             merged, "scrap_val", ["part_number"], handle_resets=handle_resets
         ).rename(columns={"quantity": "scrap_quantity"})
-        costs = {str(k): v for k, v in material_costs.items()}
+        costs = {
+            str(key): value
+            for key, value in zip(
+                id_text(pd.Series(list(material_costs), dtype=object)),
+                material_costs.values(),
+                strict=True,
+            )
+        }
+        parts = id_text(totals["part_number"].astype(object))
         check_known_names(
-            totals["part_number"].astype(str),
+            parts,
             costs,
             kind="part number(s) without a cost",
             where="ScrapEvents.scrap_cost",
             consequence="their scrap is costed at 0",
         )
-        totals["cost_per_unit"] = [
-            costs.get(str(p), 0.0) for p in totals["part_number"]
-        ]
+        totals["cost_per_unit"] = [costs.get(str(p), 0.0) for p in parts]
         totals["total_cost"] = totals["scrap_quantity"] * totals["cost_per_unit"]
 
         return (

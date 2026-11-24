@@ -72,6 +72,9 @@ if TYPE_CHECKING:
     from ts_shape.events.engineering.control_loop_health import (
         ControlLoopHealthEvents as ControlLoopHealthEvents,
     )
+    from ts_shape.events.engineering.control_loop_profiling import (
+        ControlLoopProfileEvents as ControlLoopProfileEvents,
+    )
     from ts_shape.events.engineering.disturbance_recovery import (
         DisturbanceRecoveryEvents as DisturbanceRecoveryEvents,
     )
@@ -141,8 +144,17 @@ if TYPE_CHECKING:
     from ts_shape.events.production.changeover import (
         ChangeoverEvents as ChangeoverEvents,
     )
+    from ts_shape.events.production.changeover_profiling import (
+        ChangeoverProfileEvents as ChangeoverProfileEvents,
+    )
+    from ts_shape.events.production.changeover_profiling import (
+        StartupProfileEvents as StartupProfileEvents,
+    )
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
+    )
+    from ts_shape.events.production.curve_signature import (
+        CurveSignatureEvents as CurveSignatureEvents,
     )
     from ts_shape.events.production.cycle_profiling import (
         CycleProfileEvents as CycleProfileEvents,
@@ -165,6 +177,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.flow_metrics import (
         FlowMetricsEvents as FlowMetricsEvents,
+    )
+    from ts_shape.events.production.handshake_profiling import (
+        HandshakeProfileEvents as HandshakeProfileEvents,
     )
     from ts_shape.events.production.line_balancing import (
         LineBalancingEvents as LineBalancingEvents,
@@ -195,19 +210,25 @@ if TYPE_CHECKING:
     from ts_shape.events.production.operator_performance import (
         OperatorPerformanceTracking as OperatorPerformanceTracking,
     )
+    from ts_shape.events.production.order_profiling import (
+        OrderProfileEvents as OrderProfileEvents,
+    )
+    from ts_shape.events.production.order_profiling import (
+        ScrapProfileEvents as ScrapProfileEvents,
+    )
     from ts_shape.events.production.order_traceability import (
         OrderTraceabilityEvents as OrderTraceabilityEvents,
     )
     from ts_shape.events.production.order_traceability import (
         ValueTraceabilityEvents as ValueTraceabilityEvents,
     )
+    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.part_tracking import (
         PartProductionEvents as PartProductionEvents,
     )
     from ts_shape.events.production.part_tracking import (
         PartProductionTracking as PartProductionTracking,
     )
-    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.performance_loss import (
         PerformanceLossEvents as PerformanceLossEvents,
     )
@@ -239,6 +260,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.scrap_tracking import ScrapEvents as ScrapEvents
     from ts_shape.events.production.scrap_tracking import ScrapTracking as ScrapTracking
+    from ts_shape.events.production.setting_impact import (
+        SettingImpactEvents as SettingImpactEvents,
+    )
     from ts_shape.events.production.setup_time_tracking import (
         SetupTimeEvents as SetupTimeEvents,
     )
@@ -256,6 +280,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.shift_reporting import (
         ShiftReporting as ShiftReporting,
+    )
+    from ts_shape.events.production.stop_profiling import (
+        StopProfileEvents as StopProfileEvents,
     )
     from ts_shape.events.production.target_tracking import TargetEvents as TargetEvents
     from ts_shape.events.production.target_tracking import (

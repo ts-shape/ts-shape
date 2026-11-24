@@ -718,13 +718,14 @@ class ShiftHandoverEvents(Base):
         """
         if not as_frame:
             warn_dict_return("ShiftHandoverEvents.highlight_issues", kind="list")
+        given_thresholds = dict(thresholds or {})
         thresholds = thresholds or {
             "production_achievement_pct": 95.0,
             "quality_pct": 98.0,
             "availability_pct": 90.0,
         }
         check_keys(
-            thresholds,
+            given_thresholds,
             (
                 [str(c) for c in report_df.columns]
                 if report_df is not None
