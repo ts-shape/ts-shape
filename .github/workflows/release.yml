@@ -10,8 +10,9 @@ name: Release Pipeline
 #   Release-As: 0.1.0          # an exact version, higher than the last one
 #
 # A manual run (workflow_dispatch) takes the same choice as inputs. The tag is
-# created only after the package was published, so a failed run never burns
-# a version number.
+# created only after the package was published. The version step also reads
+# the versions already on PyPI, so a run that published but failed to tag
+# never makes the next run re-upload the same version.
 
 on:
   push:
@@ -143,27 +144,25 @@ jobs:
     permissions:
       contents: write  # push the tag, create the release
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 0
-
       - name: Download dist artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: dist
           path: dist
 
+      # The Releases API creates the tag on the commit that was built and
+      # published. Not `git push` of a tag: GitHub refuses a pushed ref whose
+      # commits change workflow files unless the token has the `workflows`
+      # permission, which the GITHUB_TOKEN cannot get (it broke the 0.0.95
+      # release, whose commit changed ci.yml).
       - name: Create tag and release
         env:
           VERSION: ${{ needs.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
-          gh release create "$VERSION" dist/* --title "$VERSION" --generate-notes --verify-tag
+          gh release create "$VERSION" dist/* \
+            --target "$GITHUB_SHA" --title "$VERSION" --generate-notes
 
   # ===========================================================================
   # Documentation (deployed after CI, independent of publishing)

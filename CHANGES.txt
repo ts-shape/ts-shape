@@ -1,3 +1,10 @@
+# November 24, 2026 (release pipeline fix)
+ci: releases tag through the GitHub Releases API instead of `git push`
+  (a pushed tag on a commit that changes workflow files is refused for the
+  workflow token; that broke 0.0.95's tag), and the next version also
+  counts the versions already on PyPI, so a published but untagged version
+  is never uploaded again.
+
 # November 24, 2026 (docs: landing page eyebrow and headline)
 docs: the line above the landing page headline reads "Timeseries ·
   Manufacturing · Continuous Improvement" instead of "Python · pandas ·
