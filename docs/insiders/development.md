@@ -115,8 +115,7 @@ Two GitHub Actions workflows:
 - `.github/workflows/ci.yml` runs on every pull request commit (once; there is
   no separate push trigger) and can be started by hand. It lints (black, ruff,
   mypy), generates the API reference and builds the Docusaurus site (broken links fail), runs the tests on
-  Python 3.13 to 3.15 (plus a non-blocking Python 3.16 preview job on the
-  scientific-python nightly wheels) and once with every core dependency pinned to its
+  Python 3.13 to 3.15 and once with every core dependency pinned to its
   declared minimum (`min-deps`), and builds the package (`twine check
   --strict`, no `0.0.0` version, the wheel imports). A non-blocking `scan` job
   runs `scripts/scan_deprecations.sh` (tests with DeprecationWarning as an
