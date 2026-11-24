@@ -32,7 +32,7 @@ from ts_shape import StatisticalProcessControlEvents
 
 df = pd.concat([
     ts_shape.make_timeseries(["oven:temp_ref"], n_points=200, seed=1),
-    ts_shape.make_timeseries(["oven:temp"], n_points=480, drift=2.0, seed=21),
+    ts_shape.make_timeseries(["oven:temp"], n_points=480, drift=1.5, seed=2),
 ])
 spc = StatisticalProcessControlEvents(df, value_column="value_double",
     tolerance_uuid="oven:temp_ref", actual_uuid="oven:temp", event_uuid="oven:spc")
@@ -50,12 +50,35 @@ oee = OEEEvents(df).oee(run_state_uuid="line:running",
     counter_uuid="line:produced_count", ideal_cycle_time=8.0)
 """
 
-CYCLES = """\
+LOOPS = """\
 import ts_shape
+from ts_shape import ControlLoopProfileEvents
 
-frame, _ = ts_shape.make_plc_cycles(n_cycles=300, seed=1)
-profile = ts_shape.profile_cycles(frame)   # no signal mapping
-register = profile.tables["contribution_register"]
+df, _ = ts_shape.make_control_loops(duration="8h", seed=1)
+loops = ControlLoopProfileEvents(df)   # finds the SP / PV / OP triples itself
+register = loops.loop_register()       # one row per loop, with a diagnosis
+"""
+
+ENERGY = """\
+import ts_shape
+from ts_shape import EnergyEfficiencyEvents
+from ts_shape.utils.counters import counter_increments
+
+df, _ = ts_shape.make_plc_cycles(n_cycles=700, seed=1, energy=True)
+meter = df["uuid"] == "plc:energy_kwh"   # a cumulative kWh meter
+df.loc[meter, "value_double"] = counter_increments(df.loc[meter, "value_double"])
+sec = EnergyEfficiencyEvents(df).specific_energy_consumption(
+    "plc:energy_kwh", "plc:part_counter", window="30min")
+"""
+
+DRIVERS = """\
+import ts_shape
+from ts_shape import CrossSignalAnalytics
+
+df, _ = ts_shape.make_control_loops(loops=("good",), duration="8h", seed=1)
+signals = CrossSignalAnalytics(df)    # long format in, one column per signal
+tests = {c: signals.granger_causality(c, "plc:tic101_pv", max_lag=10)
+         for c in signals.signals if c != "plc:tic101_pv"}
 """
 
 
@@ -91,18 +114,9 @@ def spc_example() -> dict:
             spans[-1][1] = t
         else:
             spans.append([t, t])
-    smooth = (
-        series.set_index("systime")["value_double"].rolling(20, min_periods=1).mean()
-    )
-    first_alarm = hits[hits["rule"] == "rule_2"]["systime"].min()
-    first_out = out_of_limits["systime"].min()
     return {
         "code": SPC,
         "points": points,
-        "smooth": [[_iso(t), round(float(v), 3)] for t, v in smooth.items()],
-        "first_alarm": _iso(first_alarm),
-        "first_out": _iso(first_out),
-        "lead_minutes": round((first_out - first_alarm).total_seconds() / 60),
         "mean": round(float(limits["mean"]), 3),
         "ucl": round(float(limits["3sigma_upper"]), 3),
         "lcl": round(float(limits["3sigma_lower"]), 3),
@@ -128,18 +142,8 @@ def line_example() -> dict:
     s = _run(LINE)
     states, oee = s["states"], s["oee"].iloc[0]
     idle = states[states["state"] == "idle"]
-    longest = idle.loc[idle["duration_seconds"].idxmax()]
-    planned, run = float(oee["planned_seconds"]), float(oee["run_seconds"])
-    productive = planned * float(oee["oee_pct"]) / 100
     return {
         "code": LINE,
-        "planned_hours": round(planned / 3600, 1),
-        "productive_hours": round(productive / 3600, 1),
-        "slow_hours": round((run - productive) / 3600, 1),
-        "stopped_hours": round((planned - run) / 3600, 1),
-        "parts": int(oee["actual_parts"]),
-        "parts_possible": round(float(oee["ideal_parts"])),
-        "longest_stop": [_iso(longest["start"]), _iso(longest["end"])],
         "intervals": [
             [_iso(a), _iso(b), st]
             for a, b, st in zip(
@@ -157,48 +161,120 @@ def line_example() -> dict:
     }
 
 
-def _step_label(event: str) -> str:
-    # "plc:step=60" -> "step 60", "plc:camera_done↓" -> "camera done ↓"
-    name = event.split(":", 1)[-1].replace("step=", "step ").replace("_", " ")
-    for raw, nice in (("↓", " off"), ("↑", " on"), (">", " high"), ("<", " low")):
-        name = name.replace(raw, nice)
-    return " ".join(name.split())
-
-
-def cycles_example() -> dict:
-    s = _run(CYCLES)
-    register, summary = s["register"], s["profile"].summary
-    variant = summary["variants"][0]
-    rows = register[register["variant"] == variant["variant"]]
-    top = rows.sort_values("potential_seconds", ascending=False).head(5)
-    return {
-        "code": CYCLES,
-        "variant": variant["variant"],
-        "median_seconds": round(float(variant["median_seconds"]), 1),
-        "target_seconds": round(float(variant["target_seconds"]), 1),
-        "throughput_gain_pct": round(float(variant["throughput_gain_pct"]), 1),
-        "cycle_count": int(summary["cycle_count"]),
-        "segments": [
+def loops_example() -> dict:
+    s = _run(LOOPS)
+    df, register = s["df"], s["register"]
+    steps = s["loops"].loop_steps()
+    loops = []
+    for row in register.sort_values("loop").itertuples():
+        sp = df[df["uuid"] == row.setpoint_uuid].set_index("systime")["value_double"]
+        pv = df[df["uuid"] == row.actual_uuid].set_index("systime")["value_double"]
+        changes = sp[sp.diff().abs() > 0]
+        # the largest step with 10 quiet minutes after it
+        best = None
+        for t, new in changes.items():
+            after = changes[(changes.index > t)]
+            if len(after) and after.index[0] - t < pd.Timedelta("10min"):
+                continue
+            old = float(sp[sp.index < t].iloc[-1])
+            if best is None or abs(new - old) > abs(best[2] - best[1]):
+                best = (t, old, float(new))
+        t, old, new = best
+        window = pv[
+            (pv.index >= t - pd.Timedelta("1min"))
+            & (pv.index <= t + pd.Timedelta("10min"))
+        ]
+        window = window.iloc[::3]
+        step = steps[(steps["loop"] == row.loop) & (steps["start"] == t)]
+        loops.append(
             {
-                "label": f"{_step_label(a)} → {_step_label(b)}",
-                "potential_seconds": round(float(p), 2),
-                "median_seconds": round(float(m), 2),
-                "p10_seconds": round(float(q), 2),
+                "name": row.loop.split(":", 1)[-1].removesuffix("_sp").upper(),
+                "diagnosis": row.diagnosis,
+                "steps": int(row.step_count),
+                "overshoot_pct": round(float(row.median_overshoot_pct), 1),
+                "settle_seconds": round(float(row.median_settle_seconds)),
+                "settled_pct": round(float(row.settled_share_ratio) * 100),
+                "step_overshoot_pct": (
+                    round(float(step["overshoot_pct"].iloc[0]), 1)
+                    if len(step) and pd.notna(step["overshoot_pct"].iloc[0])
+                    else None
+                ),
+                # seconds since the step, response in % of the step (0 old, 100 new)
+                "response": [
+                    [
+                        round((ts - t).total_seconds()),
+                        round((float(v) - old) / (new - old) * 100, 1),
+                    ]
+                    for ts, v in window.items()
+                ],
             }
-            for a, b, p, m, q in zip(
-                top["from_event"],
-                top["to_event"],
-                top["potential_seconds"],
-                top["median_seconds"],
-                top["p10_seconds"],
+        )
+    return {"code": LOOPS, "loops": loops}
+
+
+def energy_example() -> dict:
+    s = _run(ENERGY)
+    sec = s["sec"]
+    sec = sec[sec["total_output"] >= 15]  # drop the half-empty last window
+    values = sec["sec"].astype(float)
+    best = float(values.min())
+    return {
+        "code": ENERGY,
+        "windows": [
+            [_iso(t), round(float(v), 3), int(n), round(float(e), 2)]
+            for t, v, n, e in zip(
+                sec["start"],
+                sec["sec"],
+                sec["total_output"],
+                sec["total_energy"],
                 strict=True,
             )
         ],
+        "median_kwh_per_part": round(float(values.median()), 3),
+        "best_kwh_per_part": round(best, 3),
+        "worst_kwh_per_part": round(float(values.max()), 3),
+        "worst_window": _iso(sec.loc[values.idxmax(), "start"]),
+        "parts": int(sec["total_output"].sum()),
+        "kwh": round(float(sec["total_energy"].sum()), 1),
+        # energy above the best window's rate, for the parts made
+        "excess_kwh": round(
+            float((sec["total_energy"] - best * sec["total_output"]).sum()), 1
+        ),
     }
 
 
+def drivers_example() -> dict:
+    s = _run(DRIVERS)
+    names = {
+        "plc:tic101_op": "Valve output (OP)",
+        "plc:tic101_sp": "Setpoint (SP)",
+        "plc:ambient_temp": "Ambient temperature",
+        "plc:bypass_valve": "Bypass valve",
+        "plc:line_speed_set": "Line speed setting",
+    }
+    rows = [
+        {
+            "uuid": c,
+            "label": names.get(c, c),
+            "f_statistic": round(float(r["f_statistic"]), 1),
+            "p_value_adjusted": float(f"{float(r['p_value_adjusted']):.3g}"),
+            "lag": int(r["optimal_lag"]),
+            "causal": bool(r["is_causal"]),
+        }
+        for c, r in s["tests"].items()
+    ]
+    rows.sort(key=lambda r: r["f_statistic"], reverse=True)
+    return {"code": DRIVERS, "target": "plc:tic101_pv", "signals": rows}
+
+
 def build() -> dict:
-    return {"spc": spc_example(), "line": line_example(), "cycles": cycles_example()}
+    return {
+        "line": line_example(),
+        "loops": loops_example(),
+        "spc": spc_example(),
+        "energy": energy_example(),
+        "drivers": drivers_example(),
+    }
 
 
 def main() -> None:

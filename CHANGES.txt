@@ -1,15 +1,14 @@
 # November 24, 2026 (docs: green, version dropdown)
-docs: the landing page leads with three real-world examples instead of a
-  big logo, production first, each with the insight as its headline and
-  one key figure: where a line's day went (16.7 planned hours split into
-  productive, running slow and stopped, OEE 75.6%, stops on a timeline),
-  which cycle step to fix first (cycle profiler, +3.7% throughput), and
-  oven drift caught by the SPC run rules 78 minutes before the first
-  reading beyond 3σ. Each chart is ts-shape output on its simulated data
-  (scripts/landing_examples.py runs the code shown under the chart), drawn
-  at its real width, interactive (hover), with a data table, a light and
-  a dark palette, and a phone layout. The hero is slimmer so the first
-  chart shows above the fold.
+docs: the landing page leads with five real-world examples instead of a
+  big logo, one per domain: where a line's day went (production: stops,
+  OEE), which control loops need retuning (engineering: loops found and
+  diagnosed from raw PLC tags, step responses), oven drift caught by SPC
+  run rules (quality), energy per part per half hour from a kWh meter and
+  a part counter (energy), and which signals drive a process temperature
+  (data science: Granger causality against look-alike signals). Each
+  chart is ts-shape output on its simulated data (scripts/
+  landing_examples.py runs the code shown under the chart), interactive
+  (hover), with a data table and a light and a dark palette.
 docs: the site's main colour is green (green-700 in light mode, readable
   on white; green-400 in dark mode); the logo's chart line, the social
   card and the favicons of the site follow. API kind badges: classes
