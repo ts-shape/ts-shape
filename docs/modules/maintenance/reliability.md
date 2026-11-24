@@ -1,5 +1,5 @@
 ---
-tags: [iso-22400, weibull]
+tags: [predictive-maintenance, downtime, iso-22400, weibull]
 ---
 
 # ReliabilityEvents

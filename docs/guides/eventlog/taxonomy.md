@@ -1,5 +1,5 @@
 ---
-tags: [ocel, xes]
+tags: [process-mining, ocel, xes]
 ---
 
 # Labeling and taxonomy

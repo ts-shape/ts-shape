@@ -1,3 +1,7 @@
+---
+tags: [shift-reporting, targets]
+---
+
 # ShiftReportEvents
 
 Production per shift, shift-to-shift comparison, actual against per-shift targets, and the best and worst shifts, from a production counter.

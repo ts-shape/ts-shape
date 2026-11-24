@@ -1,5 +1,5 @@
 ---
-tags: [xes]
+tags: [cycle-time, machine-state, process-mining, xes]
 ---
 
 # CycleProfileEvents

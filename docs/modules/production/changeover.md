@@ -1,3 +1,7 @@
+---
+tags: [changeover]
+---
+
 # ChangeoverEvents
 
 Product or recipe changes as point events, and changeover windows that end after a fixed time or once process metrics are stable again, from a product/recipe signal.

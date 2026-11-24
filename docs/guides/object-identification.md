@@ -1,5 +1,5 @@
 ---
-tags: [ocel]
+tags: [traceability, process-mining, ocel]
 ---
 
 # Object identification

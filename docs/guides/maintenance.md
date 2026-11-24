@@ -1,5 +1,5 @@
 ---
-tags: [weibull]
+tags: [predictive-maintenance, condition-monitoring, drift, weibull]
 ---
 
 # Maintenance

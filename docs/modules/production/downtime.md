@@ -1,5 +1,5 @@
 ---
-tags: [iso-22400]
+tags: [downtime, oee, shift-reporting, iso-22400]
 ---
 
 # DowntimeEvents

@@ -1,5 +1,5 @@
 ---
-tags: [iso-50001]
+tags: [energy, machine-state, iso-50001]
 ---
 
 # EnergyEfficiencyEvents

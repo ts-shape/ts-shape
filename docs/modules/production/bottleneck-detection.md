@@ -1,3 +1,7 @@
+---
+tags: [throughput, machine-state]
+---
+
 # BottleneckDetectionEvents
 
 Finds the station that constrains a line: the one with the highest utilization per window, from one boolean run signal per station.

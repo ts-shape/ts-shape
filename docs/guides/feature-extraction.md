@@ -1,3 +1,7 @@
+---
+tags: [cycle-time, machine-learning]
+---
+
 # Cycles and segments
 
 Two ways to cut a time series into pieces you can compare:

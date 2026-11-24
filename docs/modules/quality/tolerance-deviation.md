@@ -1,5 +1,5 @@
 ---
-tags: [aiag, montgomery-sqc]
+tags: [capability, aiag, montgomery-sqc]
 ---
 
 # ToleranceDeviationEvents

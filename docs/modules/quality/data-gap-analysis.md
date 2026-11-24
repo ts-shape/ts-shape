@@ -1,3 +1,7 @@
+---
+tags: [data-quality]
+---
+
 # DataGapAnalysisEvents
 
 Gaps in a signal's history (historian outages, network drops, a PLC that stopped publishing): gap intervals, one summary row, coverage per period, and gaps short enough to interpolate. For individual missing-data events and range checks see [SignalQualityEvents](signal-quality.md).

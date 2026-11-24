@@ -1,3 +1,7 @@
+---
+tags: [process-development, correlation]
+---
+
 # CriticalParameterRankingEvents
 
 Ranks candidate process parameters by their statistical association with a per-run outcome (yield, a quality KPI), to shortlist the critical process parameters worth tight control.

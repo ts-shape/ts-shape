@@ -1,3 +1,7 @@
+---
+tags: [process-stability]
+---
+
 # OperatingRangeEvents
 
 The operating envelope of a signal per window (min, percentiles, max), shifts of the operating point, time spent in, below and above a range, and a value histogram.

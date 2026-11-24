@@ -1,5 +1,5 @@
 ---
-tags: [iso-50001]
+tags: [energy, iso-50001]
 ---
 
 # EnergyPerformanceIndicatorEvents

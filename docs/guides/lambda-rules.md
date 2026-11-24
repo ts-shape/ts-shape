@@ -1,3 +1,7 @@
+---
+tags: [data-pipelines, alarms-and-thresholds]
+---
+
 # Lambda rules
 
 A lambda rule is a detector declared as data (YAML or a dict) instead of a

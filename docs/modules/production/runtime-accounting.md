@@ -1,5 +1,5 @@
 ---
-tags: [iso-22400]
+tags: [machine-state, downtime, iso-22400]
 ---
 
 # RuntimeAccountingEvents

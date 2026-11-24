@@ -1,3 +1,7 @@
+---
+tags: [downtime, oee]
+---
+
 # MicroStopEvents
 
 Short idle intervals (default under 30 s), their frequency, the time they cost and when in the day they cluster, from a boolean run signal (True = running).

@@ -1,3 +1,7 @@
+---
+tags: [scrap-and-rework]
+---
+
 # ScrapEvents
 
 Scrap quantity (weight or count) per shift, per reason and over time, and scrap cost per part or material, from a cumulative scrap signal (`value_double` by default).

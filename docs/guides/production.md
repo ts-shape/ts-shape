@@ -1,5 +1,5 @@
 ---
-tags: [iso-22400]
+tags: [oee, downtime, machine-state, shift-reporting, traceability, iso-22400]
 ---
 
 # Production and OEE

@@ -1,3 +1,7 @@
+---
+tags: [anomaly-detection, drift]
+---
+
 # ChangePointEvents
 
 Finds every sample where a signal's level (or level and spread) shifts, such as tool changes, new material lots or recalibrations, and the stable segments between them. Needs no window length.

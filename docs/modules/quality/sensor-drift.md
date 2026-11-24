@@ -1,3 +1,7 @@
+---
+tags: [drift, measurement-systems]
+---
+
 # SensorDriftEvents
 
 Calibration drift of an inline sensor per window: zero-point offset, span (gain) changes, the trend of the window mean or spread, and a 0-100 calibration health score, against a reference value, a reference signal or the first window.

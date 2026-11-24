@@ -1,3 +1,7 @@
+---
+tags: [targets]
+---
+
 # TargetEvents
 
 Actual against target per shift or per day, and the share of days on target, for any counter signal.

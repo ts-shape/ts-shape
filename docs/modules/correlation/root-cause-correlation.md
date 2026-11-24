@@ -1,3 +1,7 @@
+---
+tags: [correlation, downtime, scrap-and-rework]
+---
+
 # RootCauseCorrelationEvents
 
 Ranks candidate signals as possible causes of a set of detected events (stops, alarms, quality failures): for each candidate, the lead time at which it correlates most strongly with the event onsets, with a significance test, a single verdict, and the correlation-by-lag curve behind it.

@@ -1,3 +1,7 @@
+---
+tags: [process-stability, process-control]
+---
+
 # SteadyStateDetectionEvents
 
 Steady-state intervals (rolling standard deviation below a threshold) and transient intervals of a signal, the share of time steady, and the operating band of each steady interval.

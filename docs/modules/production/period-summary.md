@@ -1,5 +1,5 @@
 ---
-tags: [iso-22400, iso-50001]
+tags: [shift-reporting, oee, iso-22400, iso-50001]
 ---
 
 # PeriodSummaryEvents

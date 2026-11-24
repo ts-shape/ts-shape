@@ -1,3 +1,7 @@
+---
+tags: [machine-state, energy]
+---
+
 # OperatingStateEvents
 
 Operating states inferred from one continuous signal (spindle current, power, vibration) when the machine logs no explicit run/idle flag: state intervals, typical durations per state, unexpected state transitions and states held too long. With a boolean run signal, use [MachineStateEvents](machine-state.md) instead.

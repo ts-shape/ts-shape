@@ -1,3 +1,7 @@
+---
+tags: [traceability, process-mining]
+---
+
 # Object signal variants (test matrix)
 
 Machine builders do not agree on how objects appear in the time series. A

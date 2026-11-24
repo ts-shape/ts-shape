@@ -1,3 +1,7 @@
+---
+tags: [traceability]
+---
+
 # ValueTraceabilityEvents
 
 Timeline, lead time and current location of a shared identifier (serial number, order ID, batch code) across stations, where each station writes the identifier it is processing to its own string signal.

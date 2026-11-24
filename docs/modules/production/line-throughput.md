@@ -1,3 +1,7 @@
+---
+tags: [throughput, oee, targets]
+---
+
 # LineThroughputEvents
 
 Parts per window, takt adherence, a counter-only OEE estimate and throughput trends from a part counter and/or a cycle trigger.

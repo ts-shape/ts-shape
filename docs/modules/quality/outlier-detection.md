@@ -1,3 +1,7 @@
+---
+tags: [anomaly-detection]
+---
+
 # OutlierDetectionEvents
 
 Outlier samples by Z-score, IQR, MAD or Isolation Forest, scored per signal, with outliers close in time grouped together.

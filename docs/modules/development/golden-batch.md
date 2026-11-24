@@ -1,3 +1,7 @@
+---
+tags: [batch-processes, process-development]
+---
+
 # GoldenBatchDeviationEvents
 
 Scores how far a batch's trajectory of one signal (reactor temperature, pH, torque) deviates from a golden reference batch: the largest pointwise deviation, the area between the curves, or a dynamic-time-warping shape distance; overall or per recipe phase.

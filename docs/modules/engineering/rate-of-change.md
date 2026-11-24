@@ -1,3 +1,7 @@
+---
+tags: [alarms-and-thresholds, anomaly-detection]
+---
+
 # RateOfChangeEvents
 
 Intervals where a signal changes faster than a rate limit, rate statistics per window, and sudden step jumps.

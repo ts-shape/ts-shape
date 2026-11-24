@@ -1,3 +1,7 @@
+---
+tags: [batch-processes, traceability]
+---
+
 # BatchTrackingEvents
 
 Batches, their durations and yields from a batch-ID string signal. A batch is a run of constant batch-ID values; a new batch starts when the value changes.

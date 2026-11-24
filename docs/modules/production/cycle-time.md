@@ -1,3 +1,7 @@
+---
+tags: [cycle-time]
+---
+
 # CycleTimeEvents
 
 Cycle times per part number from a part-number string signal and a cycle-complete trigger (boolean or integer). A cycle time is the time between consecutive completions.

@@ -1,5 +1,5 @@
 ---
-tags: [aiag, montgomery-sqc]
+tags: [capability, forecasting, aiag, montgomery-sqc]
 ---
 
 # CapabilityTrendingEvents

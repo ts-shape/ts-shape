@@ -1,3 +1,7 @@
+---
+tags: [supply-chain, forecasting]
+---
+
 # DemandPatternEvents
 
 Demand per period (total, average, peak), demand spikes, and day-of-week or hour-of-day patterns, from a numeric demand signal (one value per order or reading).

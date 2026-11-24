@@ -1,5 +1,5 @@
 ---
-tags: [isa-18-2]
+tags: [alarms-and-thresholds, isa-18-2]
 ---
 
 # AlarmManagementEvents

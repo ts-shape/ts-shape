@@ -1,5 +1,5 @@
 ---
-tags: [iso-20816]
+tags: [condition-monitoring, predictive-maintenance, iso-20816]
 ---
 
 # VibrationAnalysisEvents

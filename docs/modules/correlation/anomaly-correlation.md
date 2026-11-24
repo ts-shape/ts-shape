@@ -1,3 +1,7 @@
+---
+tags: [correlation, anomaly-detection]
+---
+
 # AnomalyCorrelationEvents
 
 Correlates anomalies (z-score outliers) across signals: anomalies that occur together, cascades where one signal's anomaly is followed by another's, and a ranking of which signals tend to lead.

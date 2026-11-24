@@ -1,3 +1,7 @@
+---
+tags: [process-control, anomaly-detection]
+---
+
 # DisturbanceRecoveryEvents
 
 Process upsets on a signal (deviations from a rolling baseline or a setpoint), how long the process took to recover, how often upsets occur, and whether the process settled at a different level afterwards.

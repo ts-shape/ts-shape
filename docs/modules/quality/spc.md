@@ -1,5 +1,5 @@
 ---
-tags: [montgomery-sqc, nelson-rules]
+tags: [spc, montgomery-sqc, nelson-rules]
 ---
 
 # StatisticalProcessControlEvents

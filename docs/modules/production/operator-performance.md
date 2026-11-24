@@ -1,3 +1,7 @@
+---
+tags: [targets, shift-reporting, scrap-and-rework]
+---
+
 # OperatorPerformanceEvents
 
 Output, efficiency against a per-shift target, first-pass yield and a ranking per operator, from an operator-ID string signal and part counters.

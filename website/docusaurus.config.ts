@@ -182,7 +182,7 @@ const config: Config = {
             {label: 'Changelog', to: '/changelog/'},
             {label: 'Migration and deprecations', to: '/migration/'},
             {label: 'Contributing', to: '/contributing/'},
-            {label: 'Standards', to: '/tags/'},
+            {label: 'Topics and standards', to: '/tags/'},
           ],
         },
         {

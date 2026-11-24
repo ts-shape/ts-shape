@@ -1,3 +1,7 @@
+---
+tags: [process-control, measurement-systems]
+---
+
 # SignalComparisonEvents
 
 Compares an actual signal with a reference signal (setpoint vs actual, sensor A vs sensor B): divergence intervals, deviation statistics per window, the tracking-error trend and per-window correlation.

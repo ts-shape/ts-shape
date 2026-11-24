@@ -1,3 +1,7 @@
+---
+tags: [data-pipelines]
+---
+
 # Loading data
 
 Every loader returns a long-format DataFrame (`systime`, `uuid`, `value_*`).

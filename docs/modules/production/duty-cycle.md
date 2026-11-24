@@ -1,3 +1,7 @@
+---
+tags: [machine-state]
+---
+
 # DutyCycleEvents
 
 On/off intervals, duty cycle per window, transition counts and excessive cycling from one boolean signal (True = on), e.g. a heater, motor or valve.

@@ -1,3 +1,7 @@
+---
+tags: [scrap-and-rework, shift-reporting, oee]
+---
+
 # QualityEvents
 
 NOK counts, NOK rate and first-pass yield per shift, per day and per part number, and a defect-reason Pareto, from cumulative OK/NOK counters.

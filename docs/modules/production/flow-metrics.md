@@ -1,5 +1,5 @@
 ---
-tags: [littles-law]
+tags: [throughput, littles-law]
 ---
 
 # FlowMetricsEvents

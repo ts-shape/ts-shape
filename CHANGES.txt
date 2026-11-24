@@ -29,6 +29,10 @@ docs: Mermaid diagrams (data model, event log, pipeline, OEE loss tree)
   /tags/; llms.txt and llms-full.txt; a redirect for the one old MkDocs
   URL that no longer exists (/reference/SUMMARY/). Builds use Rspack/SWC
   (about 85 s -> 32 s).
+docs: 32 topic tags (oee, downtime, drift, traceability, process-control,
+  predictive-maintenance, ...) next to the standards; every module and
+  guide page has at least one, so each page links on average 10 related
+  pages through its tags (was 1). /tags/ is "Topics and standards".
 build: the docs extra is griffe2md + black; mkdocs, mkdocs-material,
   mkdocs-gen-files, mkdocs-literate-nav and mkdocstrings are dropped.
 

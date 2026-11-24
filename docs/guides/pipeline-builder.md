@@ -1,3 +1,7 @@
+---
+tags: [data-pipelines]
+---
+
 # Pipelines
 
 `ts_shape.Pipeline` chains transforms and detectors into one definition that

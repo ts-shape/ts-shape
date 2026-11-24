@@ -56,9 +56,12 @@ must be added there.
   `flowchart TB` stay readable; wide `LR` charts get scaled down).
 - Math: `$$...$$` is KaTeX, inline or on its own lines. A single `$` is
   text, so `"$input"` needs no escaping.
-- Tags: a page lists the standards it implements in front matter
-  (`tags: [iso-22400]`); every tag must be declared in `docs/tags.yml`,
-  otherwise the build fails. `/tags/` lists them.
+- Tags: every module and guide page lists its topics (what question it
+  answers: `oee`, `drift`, `traceability`, ...) and the standards it
+  implements (`iso-22400`, `aiag`, ...) in front matter, topics first:
+  `tags: [downtime, oee, iso-22400]`. Every tag must be declared in
+  `docs/tags.yml`, otherwise the build fails; a new page gets at least one
+  topic. `/tags/` lists them, and each tag page links every page with it.
 - The build also writes `llms.txt` and `llms-full.txt` (all pages as
   Markdown, for AI assistants) and a redirect from the old
   `/reference/SUMMARY/` URL.

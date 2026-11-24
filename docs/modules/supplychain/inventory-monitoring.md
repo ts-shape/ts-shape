@@ -1,3 +1,7 @@
+---
+tags: [supply-chain, forecasting]
+---
+
 # InventoryMonitoringEvents
 
 Low-stock intervals, consumption rate, reorder-point and safety-stock breaches, and time to stockout, from a stock-level signal.

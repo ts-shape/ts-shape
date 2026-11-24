@@ -1,3 +1,7 @@
+---
+tags: [energy, machine-state]
+---
+
 # IdleEnergyDetectionEvents
 
 Energy a machine draws while it is not producing: idle and running energy per window from a meter and a boolean run signal, idle waste per shift, and the trend of idle energy over days.

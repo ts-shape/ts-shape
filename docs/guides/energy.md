@@ -1,5 +1,5 @@
 ---
-tags: [iso-50001]
+tags: [energy, sustainability, iso-50001]
 ---
 
 # Energy

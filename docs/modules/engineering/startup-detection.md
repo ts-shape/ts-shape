@@ -1,3 +1,7 @@
+---
+tags: [machine-state, changeover]
+---
+
 # StartupDetectionEvents
 
 Equipment startups in a numeric signal (speed, current, temperature): by threshold crossing with optional hysteresis, by sustained positive slope, by an adaptive baseline, or across several signals; plus startup quality, phase tracking and failed startups.

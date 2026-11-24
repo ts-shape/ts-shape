@@ -1,3 +1,7 @@
+---
+tags: [predictive-maintenance, drift]
+---
+
 # DegradationDetectionEvents
 
 Slow degradation in a sensor signal: sustained trends, growing variance, permanent level shifts, and a composite 0-100 health score against a baseline period.

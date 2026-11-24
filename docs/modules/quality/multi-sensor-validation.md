@@ -1,3 +1,7 @@
+---
+tags: [measurement-systems, data-quality]
+---
+
 # MultiSensorValidationEvents
 
 Cross-checks redundant sensors that measure the same variable: windows where they disagree, pairwise bias, a consensus score, and which sensor deviates from the group.

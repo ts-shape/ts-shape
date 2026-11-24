@@ -1,3 +1,7 @@
+---
+tags: [traceability]
+---
+
 # RoutingTraceabilityEvents
 
 Item routing from an item-ID signal paired with a routing/state signal whose value encodes the current process step or station; useful when one station performs several steps.

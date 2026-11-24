@@ -1,5 +1,5 @@
 ---
-tags: [montgomery-sqc]
+tags: [spc, anomaly-detection, montgomery-sqc]
 ---
 
 # MultivariateSPCEvents

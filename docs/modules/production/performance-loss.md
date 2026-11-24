@@ -1,5 +1,5 @@
 ---
-tags: [iso-22400]
+tags: [oee, cycle-time, iso-22400]
 ---
 
 # PerformanceLossEvents

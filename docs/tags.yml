@@ -38,3 +38,102 @@ ocel:
 xes:
   label: XES (IEEE 1849)
   description: The eXtensible Event Stream format for process mining.
+
+# ---------- Topics ----------
+
+oee:
+  label: OEE
+  description: Overall equipment effectiveness and its availability, performance and quality factors.
+downtime:
+  label: Downtime and availability
+  description: Stops, idle time, micro-stops, long downtimes and availability.
+machine-state:
+  label: Machine states
+  description: Run / idle / blocked / starved states, transitions and operating modes from PLC signals.
+cycle-time:
+  label: Cycle time
+  description: Cycle times, cycle profiling, takt and speed losses.
+throughput:
+  label: Throughput and flow
+  description: Parts per window, WIP, lead time, blocking, starving and bottlenecks along a line.
+shift-reporting:
+  label: Shift and period reporting
+  description: Per-shift, daily, weekly and monthly figures, handovers and comparisons.
+targets:
+  label: Targets and schedules
+  description: Actual against target or plan, schedule adherence and operator performance.
+scrap-and-rework:
+  label: Scrap, rework and yield
+  description: NOK counts, first-pass yield, scrap, rework and defect Paretos.
+spc:
+  label: SPC and control charts
+  description: Control limits, run rules, EWMA, CUSUM and multivariate charts.
+capability:
+  label: Process capability
+  description: Cp, Cpk, Pp, Ppk, specification limits and tolerance deviations.
+anomaly-detection:
+  label: Anomaly detection
+  description: Outliers, spikes, change points and anomalous windows.
+drift:
+  label: Drift and trends
+  description: Slow drifts, level shifts, degradation trends and distribution changes.
+measurement-systems:
+  label: Measurement systems
+  description: Gauge R&R, calibration, sensor validation, uncertainty and sampling resolution.
+data-quality:
+  label: Data quality
+  description: Gaps, sampling regularity, flatlines and signal semantics before analysis.
+traceability:
+  label: Traceability
+  description: Following serials, orders and batches through stations, routings and genealogy.
+process-mining:
+  label: Process mining
+  description: Event logs, objects and activities for process-mining tools.
+batch-processes:
+  label: Batch processes
+  description: Batches, recipes, phases and golden-batch comparison.
+changeover:
+  label: Changeover and setup
+  description: Product changes, setup times (SMED) and start-up after a change.
+process-control:
+  label: Process control
+  description: Setpoint response, control-loop health, disturbances and steady state.
+process-stability:
+  label: Process stability
+  description: Operating ranges, process windows, stability scores and warm-up behaviour.
+alarms-and-thresholds:
+  label: Alarms and thresholds
+  description: Threshold crossings, alarm floods, chattering and time to a limit.
+predictive-maintenance:
+  label: Predictive maintenance
+  description: Remaining useful life, failure prediction, health indices and reliability.
+condition-monitoring:
+  label: Condition monitoring
+  description: Vibration, bearing indicators and condition signals of assets.
+energy:
+  label: Energy
+  description: Power, consumption, efficiency, idle energy and energy per part.
+sustainability:
+  label: Carbon and sustainability
+  description: CO2e emissions and carbon intensity per source and per part.
+correlation:
+  label: Correlation and root cause
+  description: Relations between signals, anomaly cascades and candidate causes of events.
+forecasting:
+  label: Forecasting
+  description: Extrapolating trends to a threshold, a stock-out or a capability limit.
+supply-chain:
+  label: Supply chain
+  description: Inventory, demand and lead times.
+process-development:
+  label: Process development
+  description: Design of experiments, design space and critical parameters.
+continuous-processes:
+  label: Continuous processes
+  description: Extrusion, rolling, film and other continuous lines, material and energy balances.
+machine-learning:
+  label: Machine learning
+  description: Feature tables, cycle and segment features as model inputs.
+data-pipelines:
+  label: Data pipelines
+  description: Loading, transforming, pipelines, declarative rules and processing data larger than memory.

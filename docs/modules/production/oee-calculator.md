@@ -1,5 +1,5 @@
 ---
-tags: [iso-22400]
+tags: [oee, downtime, iso-22400]
 ---
 
 # OEEEvents

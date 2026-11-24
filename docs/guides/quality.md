@@ -1,5 +1,5 @@
 ---
-tags: [aiag, montgomery-sqc, nelson-rules, gum]
+tags: [spc, capability, anomaly-detection, measurement-systems, aiag, montgomery-sqc, nelson-rules, gum]
 ---
 
 # Quality and SPC

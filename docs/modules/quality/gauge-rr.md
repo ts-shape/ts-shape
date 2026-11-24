@@ -1,5 +1,5 @@
 ---
-tags: [aiag]
+tags: [measurement-systems, aiag]
 ---
 
 # GaugeRepeatabilityEvents

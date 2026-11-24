@@ -1,3 +1,7 @@
+---
+tags: [supply-chain]
+---
+
 # LeadTimeAnalysisEvents
 
 Lead times between order placement and delivery events, their statistics, and abnormally long deliveries.

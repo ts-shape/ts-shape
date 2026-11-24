@@ -1,3 +1,7 @@
+---
+tags: [changeover, downtime]
+---
+
 # SetupTimeEvents
 
 Setup (changeover) durations, statistics per product transition and trends, from a machine-state string signal in which setup rows carry a given value (default `"Setup"`).

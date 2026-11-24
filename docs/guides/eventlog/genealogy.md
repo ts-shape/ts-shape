@@ -1,5 +1,5 @@
 ---
-tags: [ocel]
+tags: [process-mining, traceability, ocel]
 ---
 
 # Genealogy

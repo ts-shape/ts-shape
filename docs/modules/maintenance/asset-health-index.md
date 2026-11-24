@@ -1,3 +1,7 @@
+---
+tags: [predictive-maintenance, condition-monitoring]
+---
+
 # AssetHealthIndexEvents
 
 One 0-100 health score per asset and window, fused from several condition signals (vibration, temperature, motor current), each tagged with the failure mode it watches: alerts when the score falls below warning or critical, the signals that cost the most health, and a projection of when the score reaches a critical level.

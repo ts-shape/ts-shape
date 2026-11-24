@@ -1,3 +1,7 @@
+---
+tags: [traceability, throughput]
+---
+
 # MultiProcessTraceabilityEvents
 
 Item timelines, lead times, parallel processing and routing paths across a station topology with parallel cells, merges and splits. Each station publishes the ID of the item it is working on.
