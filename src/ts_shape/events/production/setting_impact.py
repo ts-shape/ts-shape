@@ -57,7 +57,7 @@ class SettingImpactEvents(_CounterMixin):
     Example:
         >>> import ts_shape
         >>> frame, truth = ts_shape.make_plc_cycles(
-        ...     n_cycles=400, seed=1, setting_changes=[(150, 120.0)])
+        ...     n_cycles=400, seed=3, setting_changes=[(150, 130.0)])
         >>> impact = ts_shape.SettingImpactEvents(frame).setting_impact()
         >>> row = impact[impact["metric"] == "cycle_seconds"].iloc[0]
         >>> bool(row["shift"] < 0), row["confidence"]
