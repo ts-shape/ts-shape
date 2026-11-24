@@ -20,7 +20,7 @@ from ts_shape.utils.shifts import assign_shift, production_dates
 from ts_shape.utils.validate import check_known_names
 
 if TYPE_CHECKING:
-    from typing_extensions import deprecated
+    from warnings import deprecated
 
 logger = logging.getLogger(__name__)
 

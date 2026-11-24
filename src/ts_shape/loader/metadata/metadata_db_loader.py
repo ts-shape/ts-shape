@@ -141,7 +141,7 @@ class DatapointDB:
         file_name = (
             f"{self.output_path}/{device_name.replace(' ', '_')}_data_points.json"
         )
-        with open(file_name, "w") as f:
+        with open(file_name, "w", encoding="utf-8") as f:
             json.dump(data_points, f, indent=2)
 
     def get_all_uuids(self) -> dict[str, list[str]]:

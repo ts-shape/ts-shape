@@ -13,7 +13,7 @@ from ts_shape.utils.deprecation import (
 )
 
 if TYPE_CHECKING:
-    from typing_extensions import deprecated
+    from warnings import deprecated
 
 
 class EnvironmentalCompensationEvents(Base):

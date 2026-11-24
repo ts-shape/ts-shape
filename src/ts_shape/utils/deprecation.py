@@ -18,10 +18,10 @@ The wrapped callables report the *new* signature to :func:`inspect.signature`
 (and so to the API reference and IDEs).
 
 The deprecated objects are also marked the PEP 702 way (``__deprecated__``,
-via :func:`warnings.deprecated` on Python 3.13+), without a second runtime
+via :func:`warnings.deprecated`), without a second runtime
 warning. Static type checkers only see a ``@deprecated`` decorator written in
 the source, so the defining modules also declare each alias with
-``typing_extensions.deprecated`` inside an ``if TYPE_CHECKING:`` block; mypy
+:func:`warnings.deprecated` inside an ``if TYPE_CHECKING:`` block; mypy
 (``--enable-error-code deprecated``), pyright and IDEs then flag its use.
 """
 
@@ -54,18 +54,12 @@ C = TypeVar("C", bound=type)
 REMOVAL = "the next major release"
 
 if TYPE_CHECKING:
-    from typing_extensions import deprecated as _static_deprecated
+    from warnings import deprecated as _static_deprecated
 else:
 
     def _static_deprecated(message: str) -> Callable[[F], F]:
-        """``typing_extensions.deprecated`` for type checkers, a no-op at runtime."""
+        """``warnings.deprecated`` for type checkers, a no-op at runtime."""
         return lambda func: func
-
-
-if sys.version_info >= (3, 13):
-    from warnings import deprecated as _pep702_deprecated
-else:  # pragma: no cover - exercised on Python 3.11/3.12
-    _pep702_deprecated = None
 
 
 def _mark_deprecated(obj: Any, message: str) -> Any:
@@ -74,11 +68,11 @@ def _mark_deprecated(obj: Any, message: str) -> Any:
     ``category=None`` makes :func:`warnings.deprecated` only set
     ``__deprecated__``; the helpers below emit their own warning (with the
     stack level pointing at the user's code), so there is no double warning.
-    Before Python 3.13 the attribute is set directly, which is all the
-    decorator does with ``category=None`` (no ``typing_extensions`` import).
+    Objects that are not callable get the attribute set directly, which is
+    all the decorator does with ``category=None``.
     """
-    if _pep702_deprecated is not None and callable(obj):
-        return _pep702_deprecated(message, category=None)(obj)
+    if callable(obj):
+        return warnings.deprecated(message, category=None)(obj)
     try:
         obj.__deprecated__ = message
     except (AttributeError, TypeError):  # pragma: no cover - read-only object
