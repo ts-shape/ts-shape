@@ -1,3 +1,15 @@
+# November 24, 2026 (deprecation policy and report)
+docs: deprecation policy (naming.md): deprecated names are removed only in
+  1.0, after at least 3 months and one minor release of warnings, with a
+  release candidate (FutureWarning, no twin columns) at least 4 weeks
+  before. Nothing is removed now.
+docs: "Deprecated names" page, generated from the code on every docs
+  build (scripts/deprecation_report.py): 628 entries today (aliases,
+  renamed keywords, keyword-only arguments, attributes, twin columns,
+  moved modules and names). keyword_only records its parameters for it.
+fix: dir(ts_shape) and tab completion no longer show importlib, logging,
+  version, NullHandler, PackageNotFoundError and TYPE_CHECKING.
+
 # November 24, 2026 (profilers: one pack; check_signals)
 refactor: the machine profilers are one pack, ts_shape.events.profiling
   (cycles, stops, changeovers, handshakes, orders, curves, settings,

@@ -14,10 +14,14 @@ OutlierDetectionEvents``) keep working unchanged.
 # anywhere else is still reported by mypy's "deprecated" check.
 # mypy: disable-error-code="deprecated"
 
-import importlib
-import logging
-from importlib.metadata import PackageNotFoundError, version
-from logging import NullHandler
+# Imported under private names so that dir(ts_shape) and tab completion show
+# only the exports (TYPE_CHECKING keeps its name for mypy and is left out of
+# __dir__ below).
+import importlib as _importlib
+import logging as _logging
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _version
+from logging import NullHandler as _NullHandler
 from typing import TYPE_CHECKING
 
 # Explicit imports for type checkers and IDEs only (so ``from ts_shape import X``
@@ -553,11 +557,11 @@ if TYPE_CHECKING:
 
 # Library best practice: add NullHandler so that consuming applications
 # control logging output.  See https://docs.python.org/3/howto/logging.html
-logging.getLogger(__name__).addHandler(NullHandler())
+_logging.getLogger(__name__).addHandler(_NullHandler())
 
 try:
-    __version__ = version("ts_shape")
-except PackageNotFoundError:  # running from a source tree, not installed
+    __version__ = _version("ts_shape")
+except _PackageNotFoundError:  # running from a source tree, not installed
     __version__ = "0.0.0+unknown"
 
 
@@ -851,9 +855,11 @@ def __getattr__(name: str) -> object:
     target = _LAZY.get(name) or _ERRORS.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    module = importlib.import_module(target)
+    module = _importlib.import_module(target)
     return getattr(module, name)
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(_LAZY) | set(_ERRORS))
+    public = {n for n in globals() if not n.startswith("_") and n != "TYPE_CHECKING"}
+    dunders = {n for n in globals() if n.startswith("__")}
+    return sorted(public | dunders | set(_LAZY) | set(_ERRORS))

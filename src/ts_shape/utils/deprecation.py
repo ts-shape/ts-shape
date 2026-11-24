@@ -251,6 +251,8 @@ def keyword_only(n_positional: int) -> Callable[[F], F]:
             return func(*args, **kwargs)
 
         wrapper.__signature__ = sig.replace(parameters=new_params)  # type: ignore[attr-defined]
+        # Read by scripts/deprecation_report.py; no effect on behavior.
+        wrapper.__keyword_only__ = tuple(movable)  # type: ignore[attr-defined]
         return wrapper  # type: ignore[return-value]
 
     return decorate

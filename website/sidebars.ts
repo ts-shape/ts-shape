@@ -240,6 +240,7 @@ const sidebars: SidebarsConfig = {
   ],
   project: [
     {type: "doc", id: "migration", label: "Migration and deprecations"},
+    {type: "doc", id: "deprecations", label: "Deprecated names"},
     {type: "doc", id: "changelog", label: "Changelog"},
     {type: "doc", id: "roadmap", label: "Roadmap"},
     {type: "doc", id: "contributing", label: "Contributing"},

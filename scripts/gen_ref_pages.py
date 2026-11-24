@@ -13,6 +13,7 @@ rendered with griffe2md. Every object heading gets an explicit
 point at the page that documents the target; references to objects outside
 ts-shape (pandas, builtins) become plain text.
 
+``docs/deprecations.md`` lists every deprecated name (scripts/deprecation_report.py).
 ``docs/changelog.md`` and ``docs/license.md`` are written from ``CHANGES.txt``
 and ``LICENSE.txt``. All generated files are git-ignored.
 """
@@ -302,6 +303,12 @@ def main() -> None:
         )
 
     print(f"Wrote {len(rendered)} API reference pages to {REF.relative_to(ROOT)}")
+
+    # Every deprecated name, read from the code (docs/deprecations.md).
+    import deprecation_report
+
+    report = deprecation_report.write(DOCS / "deprecations.md")
+    print(f"Wrote docs/deprecations.md ({report.total()} deprecated names)")
 
 
 if __name__ == "__main__":

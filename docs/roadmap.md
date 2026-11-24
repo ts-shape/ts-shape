@@ -38,8 +38,11 @@ Open, all additive (new accepted forms, nothing removed):
 - **Durations in one form.** `OEEEvents` takes `ideal_cycle_time` in float
   seconds, `takt_time` takes an offset string. Accept both everywhere.
 
-In a future major release the deprecated aliases (warning since 0.0.63) are
-removed.
+The deprecated names (warning since 0.0.63) are removed in 1.0, following
+the [deprecation policy](naming.md#deprecation-policy): at least 3 months
+and one minor release of warnings, then a release candidate with
+`FutureWarning` and no twin columns. The current list: [Deprecated
+names](deprecations.md).
 
 ## W2: 1.0, correct by default, one API, one output
 

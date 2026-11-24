@@ -6,6 +6,11 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+When deprecated names are removed, and how much notice comes first, is set by
+the [deprecation policy](naming.md#deprecation-policy). [Deprecated
+names](deprecations.md) lists every one still in the code, generated on each
+docs build.
+
 ## November 2026: profilers in one pack, `profile` is `check_signals`
 
 No result changes; only where things live and one name. Every old import

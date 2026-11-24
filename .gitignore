@@ -154,6 +154,7 @@ venv.bak/
 /docs/reference/ts_shape/
 /docs/changelog.md
 /docs/license.md
+/docs/deprecations.md
 
 # mypy
 .mypy_cache/
