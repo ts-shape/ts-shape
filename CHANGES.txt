@@ -1,4 +1,10 @@
 # November 24, 2026 (docs: green, version dropdown)
+docs: the landing page leads with three real-world examples instead of a
+  big logo: oven drift caught by SPC run rules, where a line's day went
+  (stops, OEE), and which cycle step to fix first (cycle profiler). Each
+  chart is ts-shape output on its simulated data (scripts/
+  landing_examples.py runs the code shown under the chart), interactive
+  (hover), with a data table and a light and a dark palette.
 docs: the site's main colour is green (green-700 in light mode, readable
   on white; green-400 in dark mode); the logo's chart line, the social
   card and the favicons of the site follow. API kind badges: classes
