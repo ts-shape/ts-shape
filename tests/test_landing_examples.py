@@ -26,7 +26,10 @@ def test_examples_run_and_give_what_the_charts_need():
     assert spc["out_of_limits"] and spc["run_spans"]
     assert {iv[2] for iv in line["intervals"]} == {"run", "idle"}
     assert line["stop_count"] > 0 and 0 < line["oee_pct"] <= 100
-    assert len(cycles["segments"]) == 6
+    assert len(cycles["segments"]) == 5
+    assert spc["lead_minutes"] > 0  # the drift alarm comes first
+    split = line["productive_hours"] + line["slow_hours"] + line["stopped_hours"]
+    assert abs(split - line["planned_hours"]) <= 0.2
     potentials = [s["potential_seconds"] for s in cycles["segments"]]
     assert potentials == sorted(potentials, reverse=True)
     for example in data.values():

@@ -5,9 +5,9 @@ import Layout from '@theme/Layout';
 import CodeBlock from '@theme/CodeBlock';
 
 import {
-  CyclePotential,
-  LineTimeline,
-  SpcChart,
+  CycleChart,
+  DriftChart,
+  ProductionChart,
   exampleCode,
   exampleFacts,
 } from '@site/src/components/LandingCharts';
@@ -53,35 +53,23 @@ function Hero(): ReactNode {
   return (
     <header className={styles.hero}>
       <div className={`container ${styles.heroInner}`}>
-        <div className={styles.heroText}>
+        <div>
           <p className={styles.eyebrow}>Python · pandas · open source</p>
           <h1 className={styles.title}>
             Answers from your machine data, <span>not just plots.</span>
           </h1>
           <p className={styles.tagline}>{siteConfig.tagline}</p>
+        </div>
+        <div className={styles.heroSide}>
+          <CodeBlock language="bash">pip install ts-shape</CodeBlock>
           <div className={styles.buttons}>
-            <Link className="button button--primary button--lg" to="/user_guide/quick_start/">
+            <Link className="button button--primary" to="/user_guide/quick_start/">
               Get started
             </Link>
-            <Link className="button button--secondary button--lg" to="/modules/">
-              Browse detectors
+            <Link className="button button--secondary" to="/modules/">
+              Browse 90+ detectors
             </Link>
           </div>
-        </div>
-        <div className={styles.heroInstall}>
-          <CodeBlock language="bash">pip install ts-shape</CodeBlock>
-          <ul className={styles.heroFacts}>
-            <li>
-              <strong>90+</strong> detectors for production, quality, engineering, maintenance and energy
-            </li>
-            <li>
-              <strong>Long-format</strong> signals in (<code>systime</code>, <code>uuid</code>,{' '}
-              <code>value_*</code>), plain DataFrames out
-            </li>
-            <li>
-              <strong>OCEL 2.0 / XES</strong> event logs from any result, for process mining
-            </li>
-          </ul>
         </div>
       </div>
     </header>
@@ -90,20 +78,30 @@ function Hero(): ReactNode {
 
 type ExampleProps = {
   kicker: string;
-  question: string;
-  answer: ReactNode;
+  headline: ReactNode;
+  text: ReactNode;
+  stat: {value: string; label: string};
   code: string;
   link: {to: string; label: string};
   chart: ReactNode;
 };
 
-function Example({kicker, question, answer, code, link, chart}: ExampleProps): ReactNode {
+function Example({kicker, headline, text, stat, code, link, chart}: ExampleProps): ReactNode {
   return (
     <article className={styles.example}>
-      <div className={styles.exampleText}>
-        <p className={styles.kicker}>{kicker}</p>
-        <h3 className={styles.question}>{question}</h3>
-        <p className={styles.answer}>{answer}</p>
+      <div className={styles.exampleHead}>
+        <div>
+          <p className={styles.kicker}>{kicker}</p>
+          <h3 className={styles.headline}>{headline}</h3>
+          <p className={styles.text}>{text}</p>
+        </div>
+        <div className={styles.stat}>
+          <strong>{stat.value}</strong>
+          <span>{stat.label}</span>
+        </div>
+      </div>
+      <div className={styles.exampleChart}>{chart}</div>
+      <div className={styles.exampleFoot}>
         <details className={styles.code}>
           <summary>The code behind this chart</summary>
           <CodeBlock language="python">{code.trimEnd()}</CodeBlock>
@@ -112,65 +110,74 @@ function Example({kicker, question, answer, code, link, chart}: ExampleProps): R
           {link.label} →
         </Link>
       </div>
-      <div className={styles.exampleChart}>{chart}</div>
     </article>
   );
 }
 
 function Examples(): ReactNode {
   const {spc, line, cycles} = exampleFacts;
+  const top = cycles.segments[0];
   return (
     <section className={styles.section}>
       <div className="container">
-        <h2 className={styles.sectionTitle}>Questions from the shop floor, answered in a few lines</h2>
+        <h2 className={styles.sectionTitle}>What the plant data says, in a few lines of Python</h2>
         <p className={styles.sectionLead}>
-          Every chart below is real ts-shape output on its simulated plant data; open the code to see
-          the calls that produced it.
+          Real ts-shape output on its simulated plant data. Open the code under each chart to see the calls.
         </p>
         <Example
-          kicker="Quality · SPC"
-          question="Is the oven drifting before parts go out of spec?"
-          answer={
-            <>
-              Control limits come from an in-control reference run. As the temperature creeps up, the
-              Nelson run rules flag the drift from {spc.first_run_rule.slice(11, 16)} on ({spc.run_rules.length}{' '}
-              readings, shaded), and {spc.out_of_limits.length} readings cross the 3σ limit. One call returns
-              both, ready to alarm on or to turn into an event log.
-            </>
-          }
-          code={exampleCode.spc}
-          link={{to: '/modules/quality/spc/', label: 'Statistical process control'}}
-          chart={<SpcChart />}
-        />
-        <Example
           kicker="Production · OEE"
-          question="Where did the day go?"
-          answer={
+          headline={
             <>
-              From one boolean run signal and a part counter: {line.stop_count} stops cost{' '}
-              {Math.round(line.stopped_minutes)} minutes, the longest {Math.round(line.longest_stop_minutes)}.
-              Availability {line.availability_pct}% and performance {line.performance_pct}% give an OEE of{' '}
-              {line.oee_pct}%.
+              {line.stopped_hours} h lost to stops, {line.slow_hours} h to running slow
             </>
           }
+          text={
+            <>
+              From one run signal and a part counter: of {line.planned_hours} planned hours,{' '}
+              {line.productive_hours} were productive. {line.parts.toLocaleString('en-US')} parts made,{' '}
+              {line.parts_possible.toLocaleString('en-US')} possible at ideal speed.
+            </>
+          }
+          stat={{value: `${line.oee_pct}%`, label: 'OEE'}}
           code={exampleCode.line}
           link={{to: '/modules/production/oee-calculator/', label: 'OEE and machine states'}}
-          chart={<LineTimeline />}
+          chart={<ProductionChart />}
         />
         <Example
           kicker="Cycle time · profiling"
-          question="Which step should we fix first to shorten the cycle?"
-          answer={
+          headline={
             <>
-              Give it every raw PLC signal, no mapping: it finds the cycle, learns the steps and ranks them by
-              the time a step already achieves in its best 10% of cycles. Variant {cycles.variant} could run{' '}
-              {cycles.throughput_gain_pct}% faster; the top step alone is worth{' '}
-              {cycles.segments[0].potential_seconds.toFixed(2)} s per cycle.
+              Fix {top.label} first: {top.potential_seconds.toFixed(2)} s per cycle
             </>
           }
+          text={
+            <>
+              Raw PLC signals in, no mapping: ts-shape finds the cycle, learns its steps and compares each step
+              with its own best 10% of {cycles.cycle_count} cycles.
+            </>
+          }
+          stat={{value: `+${cycles.throughput_gain_pct}%`, label: 'throughput within reach'}}
           code={exampleCode.cycles}
           link={{to: '/modules/profiling/cycle-profiling/', label: 'Cycle time profiling'}}
-          chart={<CyclePotential />}
+          chart={<CycleChart />}
+        />
+        <Example
+          kicker="Quality · SPC"
+          headline={
+            <>
+              Drift caught at {spc.first_alarm.slice(11, 16)}, before the first bad reading
+            </>
+          }
+          text={
+            <>
+              Control limits from an in-control reference run; the run rules flag the creeping oven temperature
+              long before a reading crosses 3σ.
+            </>
+          }
+          stat={{value: `${spc.lead_minutes} min`, label: 'early warning'}}
+          code={exampleCode.spc}
+          link={{to: '/modules/quality/spc/', label: 'Statistical process control'}}
+          chart={<DriftChart />}
         />
       </div>
     </section>

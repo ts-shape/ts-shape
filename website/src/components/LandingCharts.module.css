@@ -1,17 +1,18 @@
 /*
- * Chart tokens, light and dark. Series and status colours follow the
- * validated reference palette (categorical slots 1-2; status critical and
- * serious); text always wears ink tokens, never a series colour.
+ * Chart tokens, light and dark. Series colours are the validated reference
+ * palette slots 1-3 (blue, orange, aqua; validated as a set against both
+ * surfaces); text wears ink tokens, never a series colour.
  */
 .figure {
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --series-3: #1baf7a;
   --status-critical: #d03b3b;
-  --status-serious: #ec835a;
   --ink-2: #52514e;
   --ink-muted: #6b6a65;
   --grid: #e1e0d9;
   --axis: #c3c2b7;
+  --track: #eeede8;
   --chart-surface: var(--ifm-background-surface-color);
 
   margin: 0;
@@ -20,10 +21,12 @@
 :global([data-theme='dark']) .figure {
   --series-1: #3987e5;
   --series-2: #d95926;
+  --series-3: #199e70;
   --ink-2: #c3c2b7;
   --ink-muted: #9a9890;
   --grid: #2c2c2a;
   --axis: #383835;
+  --track: #2a2d34;
   --chart-surface: var(--ts-surface);
 }
 
@@ -33,27 +36,132 @@
 
 .plot svg {
   display: block;
-  width: 100%;
-  height: auto;
+  max-width: none;
   overflow: visible;
 }
+
+/* ---------- production split: one whole, three parts ---------- */
+
+.split {
+  display: flex;
+  gap: 2px;
+  height: 64px;
+  margin-bottom: 1.1rem;
+}
+
+.segment {
+  display: flex;
+  flex-basis: 0;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 0.7rem;
+  border-radius: 4px;
+  color: #fff;
+  cursor: default;
+  outline: none;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 120ms ease;
+}
+
+.segmentValue {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.segmentLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.s1 {
+  background: var(--series-1);
+}
+
+.s2 {
+  background: var(--series-2);
+}
+
+.s3 {
+  background: var(--series-3);
+}
+
+.dim {
+  opacity: 0.45;
+}
+
+.timelineHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.track {
+  fill: var(--track);
+}
+
+.stop {
+  fill: var(--series-2);
+  cursor: pointer;
+  outline: none;
+}
+
+/* ---------- bars ---------- */
+
+.bar {
+  fill: var(--series-1);
+  opacity: 0.55;
+}
+
+.barTop {
+  fill: var(--series-1);
+}
+
+/* ---------- lines ---------- */
 
 .line {
   fill: none;
   stroke: var(--series-1);
-  stroke-width: 2;
+  stroke-width: 2.5;
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+
+.raw {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 1;
+  opacity: 0.22;
 }
 
 .limit {
   stroke: var(--status-critical);
   stroke-width: 1;
-  opacity: 0.55;
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
 }
 
-.grid {
-  stroke: var(--grid);
+.leadBand {
+  fill: var(--status-critical);
+  opacity: 0.07;
+}
+
+:global([data-theme='dark']) .leadBand {
+  opacity: 0.08;
+}
+
+.alarm {
+  stroke: var(--ifm-font-color-base);
+  stroke-width: 1.5;
+}
+
+.callout {
+  stroke: var(--ink-muted);
   stroke-width: 1;
 }
 
@@ -62,36 +170,47 @@
   stroke-width: 1;
 }
 
+/* ---------- text ---------- */
+
 .axisLabel,
 .rowLabel,
-.valueLabel {
+.rowLabelStrong,
+.valueLabel,
+.valueStrong,
+.calloutText,
+.calloutStrong {
   font-family: var(--ifm-font-family-base);
   font-size: 12px;
   fill: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.rowLabel {
-  font-size: 12px;
+.rowLabel,
+.valueLabel {
+  font-size: 13px;
   fill: var(--ink-2);
 }
 
-.valueLabel {
-  font-size: 12px;
-  font-weight: 600;
+.rowLabelStrong {
+  font-size: 13px;
+  font-weight: 650;
   fill: var(--ifm-font-color-base);
 }
 
-.critical {
-  fill: var(--status-critical);
-  stroke: var(--chart-surface);
-  stroke-width: 2;
+.valueStrong {
+  font-size: 14px;
+  font-weight: 700;
+  fill: var(--ifm-font-color-base);
 }
 
-.serious {
-  fill: var(--status-serious);
-  stroke: var(--chart-surface);
-  stroke-width: 1.5;
+.calloutText {
+  fill: var(--ink-2);
+}
+
+.calloutStrong {
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--ifm-font-color-base);
 }
 
 .crosshair {
@@ -107,45 +226,27 @@
 
 .hit {
   fill: transparent;
+}
+
+.hitCross {
+  fill: transparent;
   cursor: crosshair;
 }
 
-.run {
-  fill: var(--series-1);
-}
-
-.idle {
-  fill: var(--series-2);
-}
-
-.run,
-.idle,
-.bar {
+g[tabindex] {
   cursor: pointer;
   outline: none;
   transition: opacity 120ms ease;
 }
 
-.bar {
-  fill: var(--series-1);
-}
+/* ---------- legend ---------- */
 
-.plot svg:hover .run:not(.active),
-.plot svg:hover .idle:not(.active) {
-  opacity: 0.55;
-}
-
-.active {
-  opacity: 1;
-}
-
-/* Legend: shapes carry the series colour, labels wear ink. */
 .legend {
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
   list-style: none;
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.25rem;
   padding: 0;
   font-size: 0.8rem;
   color: var(--ink-2);
@@ -158,41 +259,28 @@
 }
 
 .legend line {
-  stroke-width: 2;
   stroke-linecap: round;
 }
 
 .mLine {
   stroke: var(--series-1);
+  stroke-width: 2.5;
 }
 
-.mCritical {
-  fill: var(--status-critical);
+.mRaw {
+  stroke: var(--series-1);
+  stroke-width: 1;
+  opacity: 0.4;
 }
 
-.mSerious {
-  fill: var(--status-serious);
+.mLimit {
+  stroke: var(--status-critical);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
 }
 
-.band,
-.mBand {
-  fill: var(--status-serious);
-  opacity: 0.18;
-}
+/* ---------- tooltip: value first, then the labels ---------- */
 
-.mBand {
-  opacity: 0.45;
-}
-
-.mRun {
-  fill: var(--series-1);
-}
-
-.mIdle {
-  fill: var(--series-2);
-}
-
-/* Tooltip: value first (strong), then the labels. */
 .tooltip {
   position: absolute;
   z-index: 2;
@@ -208,7 +296,6 @@
   font-size: 0.78rem;
   color: var(--ink-2);
   pointer-events: none;
-  transform: translateY(-0.25rem);
   white-space: nowrap;
 }
 
@@ -218,55 +305,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-.flag {
-  color: var(--ifm-font-color-base);
-  font-weight: 600;
-}
+/* ---------- data table view ---------- */
 
-/* Stat tiles */
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
-  gap: 0.6rem;
-  margin-bottom: 0.9rem;
-}
-
-.tile {
-  display: flex;
-  flex-direction: column;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--ts-border);
-  border-radius: 0.5rem;
-  background: var(--ifm-background-surface-color);
-}
-
-.tile span {
-  font-size: 0.75rem;
-  color: var(--ink-2);
-}
-
-.tile strong {
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--ifm-font-color-base);
-}
-
-.tile em {
-  font-style: normal;
-  font-size: 0.72rem;
-  color: var(--ink-muted);
-}
-
-/* Data table view */
 .table {
-  margin-top: 0.6rem;
-  font-size: 0.8rem;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
 }
 
 .table summary {
   cursor: pointer;
-  color: var(--ink-2);
+  color: var(--ink-muted);
 }
 
 .table table {
@@ -274,23 +322,6 @@
   width: 100%;
   margin-top: 0.5rem;
   font-size: 0.8rem;
-}
-
-.table tbody {
-  display: block;
-  max-height: 14rem;
-  overflow-y: auto;
-}
-
-.table thead,
-.table tbody tr {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-}
-
-:global([data-theme='dark']) .band {
-  opacity: 0.11;
 }
 
 /* Phones: keep labels readable; the chart scrolls sideways instead. */
@@ -301,11 +332,18 @@
   }
 
   .plot svg {
-    min-width: 560px;
     overflow: hidden;
   }
-}
 
-:global([data-theme='dark']) .mBand {
-  opacity: 0.3;
+  .segmentLabel {
+    display: none;
+  }
+
+  .segment {
+    padding: 0 0.4rem;
+  }
+
+  .segmentValue {
+    font-size: 1rem;
+  }
 }

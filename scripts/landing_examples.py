@@ -32,7 +32,7 @@ from ts_shape import StatisticalProcessControlEvents
 
 df = pd.concat([
     ts_shape.make_timeseries(["oven:temp_ref"], n_points=200, seed=1),
-    ts_shape.make_timeseries(["oven:temp"], n_points=480, drift=1.5, seed=2),
+    ts_shape.make_timeseries(["oven:temp"], n_points=480, drift=2.0, seed=21),
 ])
 spc = StatisticalProcessControlEvents(df, value_column="value_double",
     tolerance_uuid="oven:temp_ref", actual_uuid="oven:temp", event_uuid="oven:spc")
@@ -91,9 +91,18 @@ def spc_example() -> dict:
             spans[-1][1] = t
         else:
             spans.append([t, t])
+    smooth = (
+        series.set_index("systime")["value_double"].rolling(20, min_periods=1).mean()
+    )
+    first_alarm = hits[hits["rule"] == "rule_2"]["systime"].min()
+    first_out = out_of_limits["systime"].min()
     return {
         "code": SPC,
         "points": points,
+        "smooth": [[_iso(t), round(float(v), 3)] for t, v in smooth.items()],
+        "first_alarm": _iso(first_alarm),
+        "first_out": _iso(first_out),
+        "lead_minutes": round((first_out - first_alarm).total_seconds() / 60),
         "mean": round(float(limits["mean"]), 3),
         "ucl": round(float(limits["3sigma_upper"]), 3),
         "lcl": round(float(limits["3sigma_lower"]), 3),
@@ -119,8 +128,18 @@ def line_example() -> dict:
     s = _run(LINE)
     states, oee = s["states"], s["oee"].iloc[0]
     idle = states[states["state"] == "idle"]
+    longest = idle.loc[idle["duration_seconds"].idxmax()]
+    planned, run = float(oee["planned_seconds"]), float(oee["run_seconds"])
+    productive = planned * float(oee["oee_pct"]) / 100
     return {
         "code": LINE,
+        "planned_hours": round(planned / 3600, 1),
+        "productive_hours": round(productive / 3600, 1),
+        "slow_hours": round((run - productive) / 3600, 1),
+        "stopped_hours": round((planned - run) / 3600, 1),
+        "parts": int(oee["actual_parts"]),
+        "parts_possible": round(float(oee["ideal_parts"])),
+        "longest_stop": [_iso(longest["start"]), _iso(longest["end"])],
         "intervals": [
             [_iso(a), _iso(b), st]
             for a, b, st in zip(
@@ -151,7 +170,7 @@ def cycles_example() -> dict:
     register, summary = s["register"], s["profile"].summary
     variant = summary["variants"][0]
     rows = register[register["variant"] == variant["variant"]]
-    top = rows.sort_values("potential_seconds", ascending=False).head(6)
+    top = rows.sort_values("potential_seconds", ascending=False).head(5)
     return {
         "code": CYCLES,
         "variant": variant["variant"],
