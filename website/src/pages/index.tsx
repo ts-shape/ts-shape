@@ -63,9 +63,7 @@ const OUTCOMES = [
 function RotatingOutcome(): ReactNode {
   const [index, setIndex] = useState(0);
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return undefined;
-    }
+    // Reduced motion only drops the slide (see the CSS); the words still change.
     const id = window.setInterval(() => setIndex((i) => (i + 1) % OUTCOMES.length), 2800);
     return () => window.clearInterval(id);
   }, []);
