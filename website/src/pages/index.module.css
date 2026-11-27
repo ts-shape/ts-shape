@@ -35,6 +35,46 @@
   color: var(--ifm-color-primary);
 }
 
+/* All outcomes share one grid cell, so the headline keeps the size of the
+   longest one and nothing below it jumps while they swap. */
+.rotator {
+  display: inline-grid;
+  vertical-align: top;
+}
+
+.rotator > span {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: translateY(0.6em);
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+}
+
+.rotator > .rotatorActive {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.rotator > .rotatorLeaving {
+  transform: translateY(-0.6em);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rotator > span {
+    transition: none;
+  }
+}
+
 .tagline {
   max-width: 36rem;
   margin-bottom: 1.75rem;

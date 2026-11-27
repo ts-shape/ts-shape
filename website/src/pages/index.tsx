@@ -1,4 +1,4 @@
-import type {ReactNode} from 'react';
+import {useEffect, useState, type ReactNode} from 'react';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
@@ -50,6 +50,47 @@ const DOMAINS: Domain[] = [
   },
 ];
 
+// Outcomes the green part of the headline cycles through, one per domain.
+const OUTCOMES = [
+  'continuous improvement.',
+  'higher OEE.',
+  'stable processes.',
+  'less downtime.',
+  'lower energy use.',
+  'process mining.',
+];
+
+function RotatingOutcome(): ReactNode {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return undefined;
+    }
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % OUTCOMES.length), 2800);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <>
+      <span className={styles.srOnly}>{OUTCOMES[0]}</span>
+      <span className={styles.rotator} aria-hidden="true">
+        {OUTCOMES.map((outcome, i) => (
+          <span
+            key={outcome}
+            className={
+              i === index
+                ? styles.rotatorActive
+                : i === (index - 1 + OUTCOMES.length) % OUTCOMES.length
+                  ? styles.rotatorLeaving
+                  : undefined
+            }>
+            {outcome}
+          </span>
+        ))}
+      </span>
+    </>
+  );
+}
+
 function Hero(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
   return (
@@ -58,7 +99,7 @@ function Hero(): ReactNode {
         <div className={styles.heroText}>
           <p className={styles.eyebrow}>Timeseries · Manufacturing · {'Continuous\u00a0Improvement'}</p>
           <h1 className={styles.title}>
-            Turn machine signals into <span>continuous improvement.</span>
+            Turn machine signals into <RotatingOutcome />
           </h1>
           <p className={styles.tagline}>{siteConfig.tagline}</p>
           <div className={styles.buttons}>
