@@ -1,3 +1,11 @@
+# November 27, 2026 (docs: rotating headline outcome)
+docs: the green end of the landing page headline cycles through outcomes
+  ("continuous improvement.", "higher OEE.", "stable processes.", "less
+  downtime.", "lower energy use.", "process mining.") with a short slide
+  and fade. The headline keeps the height of the longest outcome, so the
+  page does not jump; screen readers get the first outcome only, and with
+  reduced motion turned on the headline stays still.
+
 # November 24, 2026 (release pipeline fix)
 ci: releases tag through the GitHub Releases API instead of `git push`
   (a pushed tag on a commit that changes workflow files is refused for the
