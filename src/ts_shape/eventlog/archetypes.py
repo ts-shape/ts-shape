@@ -193,6 +193,7 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("DowntimeEvents", "top_downtime_reasons"): "static",
     ("ParetoEvents", "rank_by_count"): "static",
     ("ParetoEvents", "rank_by_sum"): "static",
+    ("ParetoEvents", "rank_by_duration"): "static",
     ("DutyCycleEvents", "cycle_count"): "aggregate",
     ("DutyCycleEvents", "duty_cycle_by_window"): "aggregate",
     ("DutyCycleEvents", "excessive_cycling"): "threshold",

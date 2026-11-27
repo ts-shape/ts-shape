@@ -150,3 +150,145 @@ def test_small_frame_single_category_is_100_pct():
     assert out["share_of_total_pct"].iloc[0] == pytest.approx(100.0)
     assert out["cumulative_pct"].iloc[0] == pytest.approx(100.0)
     assert out["rank"].iloc[0] == 1
+
+
+def _make_state_frame(tz: str | None = None) -> pd.DataFrame:
+    """Twelve hours of state changes on one signal: A for 5h, B for 3h,
+    then A again for 4h — day totals A=9h, B=3h."""
+    start = pd.Timestamp("2024-01-01", tz=tz)
+    return pd.DataFrame(
+        {
+            "systime": [
+                start,
+                start + pd.Timedelta(hours=5),
+                start + pd.Timedelta(hours=8),
+                start + pd.Timedelta(hours=12),
+            ],
+            "uuid": "line1",
+            "value_string": ["A", "B", "A", "A"],
+        }
+    )
+
+
+def test_rank_by_duration_sums_seconds_per_category():
+    out = ParetoEvents(_make_state_frame()).rank_by_duration(window="1D")
+    assert list(out.columns) == [
+        "start",
+        "category",
+        "total",
+        "share_of_total_pct",
+        "cumulative_pct",
+        "rank",
+    ]
+    # A holds 5h (0h→5h) + 4h (8h→12h) = 9h; B holds 3h (5h→8h).
+    assert len(out) == 2
+    row_a = out[out["category"] == "A"].iloc[0]
+    row_b = out[out["category"] == "B"].iloc[0]
+    assert row_a["total"] == pytest.approx(9 * 3600)
+    assert row_b["total"] == pytest.approx(3 * 3600)
+    assert row_a["rank"] == 1
+    assert row_b["rank"] == 2
+    assert row_a["share_of_total_pct"] == pytest.approx(75.0)
+
+
+def test_rank_by_duration_last_row_per_uuid_contributes_zero():
+    """A single-sample signal has no successor on that uuid; its lone
+    row contributes zero duration and is filtered out of the ranking."""
+    df = pd.DataFrame(
+        {
+            "systime": [pd.Timestamp("2024-01-01")],
+            "uuid": "single",
+            "value_string": ["only"],
+        }
+    )
+    out = ParetoEvents(df).rank_by_duration(window="1D")
+    assert out.empty
+    # The schema is still the canonical Pareto shape.
+    assert list(out.columns) == [
+        "start",
+        "category",
+        "total",
+        "share_of_total_pct",
+        "cumulative_pct",
+        "rank",
+    ]
+
+
+def test_rank_by_duration_is_per_uuid_not_cross_signal():
+    """Interleaving a second signal must not create a ghost hold from
+    signal A's last row to signal B's first row."""
+    t0 = pd.Timestamp("2024-01-01")
+    df = pd.DataFrame(
+        {
+            # Two separate signals, a week apart.
+            "systime": [
+                t0,
+                t0 + pd.Timedelta(hours=2),
+                t0 + pd.Timedelta(days=7),
+                t0 + pd.Timedelta(days=7, hours=3),
+            ],
+            "uuid": ["line1", "line1", "line2", "line2"],
+            "value_string": ["A", "A", "B", "B"],
+        }
+    )
+    out = ParetoEvents(df).rank_by_duration(window="1D")
+    # Day 1: A for 2 hours (line1); Day 8: B for 3 hours (line2).
+    # No row spans from line1's last to line2's first.
+    assert len(out) == 2
+    day1 = out[out["start"] == pd.Timestamp("2024-01-01")]
+    day8 = out[out["start"] == pd.Timestamp("2024-01-08")]
+    assert day1["category"].iloc[0] == "A"
+    assert day1["total"].iloc[0] == pytest.approx(2 * 3600)
+    assert day8["category"].iloc[0] == "B"
+    assert day8["total"].iloc[0] == pytest.approx(3 * 3600)
+
+
+def test_rank_by_duration_tz_aware_input_preserves_tz():
+    out = ParetoEvents(_make_state_frame(tz="Europe/Berlin")).rank_by_duration(
+        window="1D"
+    )
+    assert out["start"].dt.tz is not None
+    assert str(out["start"].dt.tz) == "Europe/Berlin"
+
+
+def test_rank_by_duration_empty_frame_returns_typed_empty():
+    df = _make_state_frame().iloc[:0]
+    out = ParetoEvents(df).rank_by_duration(window="1D")
+    assert len(out) == 0
+    assert pd.api.types.is_datetime64_any_dtype(out["start"])
+    assert out["rank"].dtype == np.int64
+    assert out["total"].dtype == np.float64
+
+
+def test_rank_by_duration_top_n_and_validation():
+    out = ParetoEvents(_make_state_frame()).rank_by_duration(window="1D", top_n=1)
+    assert len(out) == 1
+    assert out["category"].iloc[0] == "A"
+    with pytest.raises(ValueError, match="top_n must be positive"):
+        ParetoEvents(_make_state_frame()).rank_by_duration(top_n=0)
+
+
+def test_rank_by_duration_missing_category_column_raises():
+    df = _make_state_frame().drop(columns=["value_string"])
+    with pytest.raises(ColumnNotFoundError):
+        ParetoEvents(df).rank_by_duration()
+
+
+def test_rank_by_duration_window_attribution_by_start():
+    """A hold that spans a window boundary is attributed to the window
+    of its start — documented behaviour, pinned here."""
+    df = pd.DataFrame(
+        {
+            # Two rows: a 4-hour hold from day 1 23:00 to day 2 03:00.
+            "systime": [
+                pd.Timestamp("2024-01-01 23:00"),
+                pd.Timestamp("2024-01-02 03:00"),
+            ],
+            "uuid": "line",
+            "value_string": ["X", "Y"],
+        }
+    )
+    out = ParetoEvents(df).rank_by_duration(window="1D")
+    assert len(out) == 1
+    assert out["start"].iloc[0] == pd.Timestamp("2024-01-01")  # start's window
+    assert out["total"].iloc[0] == pytest.approx(4 * 3600)

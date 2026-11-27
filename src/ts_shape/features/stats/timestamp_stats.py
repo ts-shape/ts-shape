@@ -14,6 +14,32 @@ logger = logging.getLogger(__name__)
 # scalar type without converting it (the numpy scalar is returned as before).
 
 
+def _per_signal_gaps(
+    dataframe: pd.DataFrame,
+    time_column: str,
+    uuid_column: str | None,
+    *,
+    where: str,
+) -> pd.Series:
+    """Consecutive gaps between timestamps, per-signal when a uuid is present.
+
+    A merged long-format frame mixes rows of different signals; a plain
+    ``.diff()`` on the pooled column turns the jump from one signal's last
+    sample to another signal's first sample into a sampling gap. Grouping
+    by ``uuid_column`` before diffing keeps each gap inside one signal.
+    """
+    times = time_values(dataframe, time_column, where=where)
+    if uuid_column and uuid_column in dataframe.columns:
+        uuids = dataframe[uuid_column].reset_index(drop=True)
+        ordered = (
+            pd.DataFrame({"__t": times.reset_index(drop=True), "__u": uuids})
+            .dropna(subset=["__t"])
+            .sort_values(["__u", "__t"], kind="stable")
+        )
+        return ordered.groupby("__u", observed=True, sort=False)["__t"].diff().dropna()
+    return times.dropna().sort_values().diff().dropna()
+
+
 class TimestampStatistics(Base):
     """
     Provides class methods to calculate statistics on timestamp columns in a pandas DataFrame.
@@ -289,26 +315,36 @@ class TimestampStatistics(Base):
     @classmethod
     @renamed_kwargs(column_name="time_column")
     def average_time_gap(
-        cls, dataframe: pd.DataFrame, time_column: str = "systime"
+        cls,
+        dataframe: pd.DataFrame,
+        time_column: str = "systime",
+        uuid_column: str | None = "uuid",
     ) -> pd.Timedelta:
         """Returns the average time gap between consecutive timestamps.
+
+        On a multi-signal long-format frame the gaps are taken per signal
+        (grouped by ``uuid_column``) and then averaged, so an inter-signal
+        transition in a merged frame never shows up as a sample interval.
+        A frame without the uuid column (or with ``uuid_column=None``) is
+        treated as a single stream.
 
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+            uuid_column: Column that identifies each signal; set to ``None``
+                to treat the frame as one stream. Default ``"uuid"``.
 
         Returns:
-            Mean gap between consecutive timestamps (in time order); NaT for
-                fewer than 2 timestamps.
+            Mean gap between consecutive timestamps (in time order), per
+                signal and then pooled; NaT for fewer than 2 timestamps on
+                every signal.
         """
-        sorted_times = (
-            time_values(
-                dataframe, time_column, where="TimestampStatistics.average_time_gap"
-            )
-            .dropna()
-            .sort_values()
+        time_deltas = _per_signal_gaps(
+            dataframe,
+            time_column,
+            uuid_column,
+            where="TimestampStatistics.average_time_gap",
         )
-        time_deltas = sorted_times.diff().dropna()
         return time_deltas.mean()
 
     @classmethod
@@ -332,28 +368,33 @@ class TimestampStatistics(Base):
     @classmethod
     @renamed_kwargs(column_name="time_column")
     def standard_deviation_timestamps(
-        cls, dataframe: pd.DataFrame, time_column: str = "systime"
+        cls,
+        dataframe: pd.DataFrame,
+        time_column: str = "systime",
+        uuid_column: str | None = "uuid",
     ) -> pd.Timedelta:
         """Returns the standard deviation of the time differences between consecutive timestamps.
+
+        Gaps are taken per signal (grouped by ``uuid_column``) and then
+        pooled, matching :meth:`average_time_gap`.
 
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+            uuid_column: Column that identifies each signal; set to ``None``
+                to treat the frame as one stream. Default ``"uuid"``.
 
         Returns:
-            Standard deviation of the gaps between consecutive timestamps;
-                NaT for fewer than 3 timestamps.
+            Standard deviation of the gaps between consecutive timestamps,
+                pooled across signals; NaT for fewer than 3 timestamps in
+                total.
         """
-        sorted_times = (
-            time_values(
-                dataframe,
-                time_column,
-                where="TimestampStatistics.standard_deviation_timestamps",
-            )
-            .dropna()
-            .sort_values()
+        time_deltas = _per_signal_gaps(
+            dataframe,
+            time_column,
+            uuid_column,
+            where="TimestampStatistics.standard_deviation_timestamps",
         )
-        time_deltas = sorted_times.diff().dropna()
         return time_deltas.std()
 
     @classmethod

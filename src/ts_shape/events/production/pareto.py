@@ -140,6 +140,120 @@ class ParetoEvents(Base):
             value_column=value_column,
         )
 
+    def rank_by_duration(
+        self,
+        *,
+        category_column: str = "value_string",
+        time_column: str = "systime",
+        uuid_column: str = "uuid",
+        window: str = "1D",
+        top_n: int | None = None,
+    ) -> pd.DataFrame:
+        """Rank categories per window by total time spent in each category.
+
+        A category holds for the interval from one row's timestamp to the
+        next row's timestamp on the same signal (``uuid_column``); the
+        duration of each hold is summed per ``(window, category)``. The
+        last row per signal has no successor and contributes nothing — the
+        point sample does not extend past itself. The hold's duration is
+        attributed to the window of its start, so a 4-hour downtime that
+        begins on the night shift stays on the night shift's Pareto and
+        does not leak into the next window.
+
+        This closes the "Pareto of downtime reasons by hours" gap that
+        :meth:`rank_by_count` (count rows) and :meth:`rank_by_sum` (sum a
+        numeric column) cannot cover; the typical input is a long-format
+        state signal (``value_string``) or an alarm-reason signal.
+
+        Args:
+            dataframe: Long-format input with ``systime``, ``uuid`` and
+                ``category_column`` (point-event semantics: each row is a
+                new state that holds until the next row on the same signal).
+            category_column: The column holding the category label. Default
+                ``"value_string"``.
+            time_column: Timestamp column. Default ``"systime"``.
+            uuid_column: Signal-identifier column. Durations are taken per
+                signal so an interleaved multi-signal frame still gets
+                per-signal holds. Default ``"uuid"``.
+            window: Pandas offset string (``"1h"``, ``"1D"``, ``"MS"``).
+                Default ``"1D"``.
+            top_n: Keep only the top-N rows per window.
+
+        Returns:
+            A flat long-format DataFrame with columns ``start``, ``category``,
+            ``total``, ``share_of_total_pct``, ``cumulative_pct``, ``rank``.
+            ``total`` is the summed duration in seconds (float64). Rows are
+            sorted by ``(start, rank)``.
+        """
+        where = "ParetoEvents.rank_by_duration"
+        require_columns(
+            self.dataframe, [time_column, uuid_column, category_column], where=where
+        )
+        if top_n is not None and top_n <= 0:
+            raise ValueError(f"{where}: top_n must be positive, got {top_n}")
+
+        df = self.dataframe
+        tz = (
+            getattr(df[time_column].dt, "tz", None)
+            if pd.api.types.is_datetime64_any_dtype(df[time_column].dtype)
+            else None
+        )
+        if df.empty:
+            return _empty_pareto(tz)
+
+        # Build per-signal holds: sort by (uuid, time), each hold runs from
+        # this row's time to the next row's time on the same uuid; the last
+        # row per uuid has no next and gets duration 0.
+        work = df[[time_column, uuid_column, category_column]].copy()
+        work = work.dropna(subset=[time_column, category_column])
+        if work.empty:
+            return _empty_pareto(tz)
+        work = work.sort_values([uuid_column, time_column], kind="stable")
+        next_time = work.groupby(uuid_column, observed=True, sort=False)[
+            time_column
+        ].shift(-1)
+        duration_seconds = (
+            (next_time - work[time_column]).dt.total_seconds().fillna(0.0)
+        )
+        work = work.assign(__duration=duration_seconds)
+        work = work[work["__duration"] > 0]
+        if work.empty:
+            return _empty_pareto(tz)
+
+        grouper = pd.Grouper(key=time_column, freq=window)
+        totals = (
+            work.groupby([grouper, category_column], observed=True, dropna=False)[
+                "__duration"
+            ]
+            .sum()
+            .reset_index(name="total")
+        )
+        totals = totals[totals["total"] > 0].copy()
+        if totals.empty:
+            return _empty_pareto(tz)
+
+        totals = totals.rename(
+            columns={time_column: "start", category_column: "category"}
+        )
+        totals["category"] = totals["category"].astype(object)
+        totals["total"] = totals["total"].astype("float64")
+        totals = totals.sort_values(
+            ["start", "total"], ascending=[True, False], kind="stable"
+        ).reset_index(drop=True)
+        window_total = totals.groupby("start", observed=True)["total"].transform("sum")
+        totals["share_of_total_pct"] = (totals["total"] / window_total * 100.0).astype(
+            "float64"
+        )
+        totals["cumulative_pct"] = totals.groupby("start", observed=True)[
+            "share_of_total_pct"
+        ].cumsum()
+        totals["rank"] = (
+            totals.groupby("start", observed=True).cumcount().add(1).astype("int64")
+        )
+        if top_n is not None:
+            totals = totals[totals["rank"] <= top_n].reset_index(drop=True)
+        return totals[_PARETO_COLS]
+
     def _pareto(
         self,
         *,

@@ -1334,6 +1334,16 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:outcome": "category",
         },
     ),
+    ("ParetoEvents", "rank_by_duration"): _r(
+        "production.pareto.by_duration",
+        _PR,
+        ST,
+        standard_attrs={
+            "ts_shape:method": "rank_by_duration",
+            "ts_shape:outcome": "category",
+            "ts_shape:sample_count": "total",
+        },
+    ),
     ("DutyCycleEvents", "cycle_count"): _r(
         "production.duty_cycle.count",
         _PR,

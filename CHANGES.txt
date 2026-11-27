@@ -1,3 +1,24 @@
+# November 27, 2026 (features: Pareto by duration, per-signal time-gap stats)
+features: `ParetoEvents.rank_by_duration(category_column, time_column,
+  uuid_column, window, top_n)` ranks categories per window by the total
+  time spent in each — the hold of one row runs until the next row on the
+  same signal, so an alarm-reason stream or a state signal produces a
+  "which reasons took the longest" Pareto that `rank_by_count` and
+  `rank_by_sum` could not. Durations are taken per `uuid_column`, so an
+  interleaved multi-signal frame does not invent a hold across signals;
+  the last row on a signal has no successor and contributes nothing. A
+  hold that spans a window boundary is attributed to the window of its
+  start; split the frame upstream when a strict per-window split is
+  needed. Registered under `production.pareto.by_duration` in the event
+  log taxonomy.
+fix: `TimestampStatistics.average_time_gap` and
+  `TimestampStatistics.standard_deviation_timestamps` take gaps per
+  `uuid_column` (default `"uuid"`) before pooling, so a merged
+  long-format frame no longer counts the jump from one signal's last
+  row to another signal's first row as a sampling gap; pass
+  `uuid_column=None` to opt back into single-stream behavior for a
+  frame that is genuinely one signal.
+
 # November 27, 2026 (docs: rotating headline outcome)
 docs: the green end of the landing page headline cycles through outcomes
   ("continuous improvement.", "higher OEE.", "stable processes.", "less
